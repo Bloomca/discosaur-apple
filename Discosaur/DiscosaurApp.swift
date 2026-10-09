@@ -11,7 +11,11 @@ import SwiftUI
 struct DiscosaurApp: App {
     var body: some Scene {
         WindowGroup {
+            #if os(macOS)
+            MacRootView()
+            #else
             ContentView()
+            #endif
         }
     }
 }

@@ -12,17 +12,29 @@ final class Player {
 
     static let shared = Player()
 
+    private(set) var activePlaylist: Playlist?
+    private(set) var currentIndex: Int?
+
     var currentTrack: Track? {
-        didSet {
-            if currentTrack != oldValue {
-                resetPlayback()
-            }
-        }
+        guard let activePlaylist, let currentIndex,
+              activePlaylist.tracks.indices.contains(currentIndex) else { return nil }
+        return activePlaylist.tracks[currentIndex]
+    }
+
+    var canGoPrevious: Bool {
+        guard currentTrack != nil, let currentIndex else { return false }
+        return currentIndex > 0
+    }
+
+    var canGoNext: Bool {
+        guard currentTrack != nil, let activePlaylist, let currentIndex else { return false }
+        return currentIndex < activePlaylist.tracks.count - 1
     }
 
     private(set) var status: Status = .stopped
     private(set) var isLoading = false
     private(set) var position: TimeInterval = 0
+    var errorMessage: String?
     private var fileInfo: AudioFileInfo?
     private var volumeValue: Float = 1
 
@@ -46,17 +58,39 @@ final class Player {
     private init() {
         engine = AVFilePlaybackEngine()
         engine.onPlaybackEnded = { [weak self] in
-            guard let self else { return }
-            self.stopProgressUpdates()
-            self.position = self.duration ?? 0
-            self.status = .stopped
-            // Keep the finished track loaded so play() can replay it.
+            self?.handlePlaybackEnded()
         }
+    }
+
+    func selectTrack(in playlist: Playlist, at index: Int) {
+        guard playlist.tracks.indices.contains(index) else { return }
+        guard activePlaylist?.id != playlist.id || currentIndex != index else { return }
+
+        resetPlayback()
+        if activePlaylist?.id != playlist.id {
+            activePlaylist = playlist
+        }
+        currentIndex = index
+    }
+
+    func next() async throws {
+        try Task.checkCancellation()
+        guard canGoNext, let activePlaylist, let currentIndex else { return }
+        selectTrack(in: activePlaylist, at: currentIndex + 1)
+        try await play()
+    }
+
+    func previous() async throws {
+        try Task.checkCancellation()
+        guard canGoPrevious, let activePlaylist, let currentIndex else { return }
+        selectTrack(in: activePlaylist, at: currentIndex - 1)
+        try await play()
     }
 
     func play() async throws {
         guard let track = currentTrack, !isLoading, status != .playing else { return }
         try Task.checkCancellation()
+        errorMessage = nil
         let id = requestID
 
         if loadedURL != track.url {
@@ -65,7 +99,12 @@ final class Player {
 
         try Task.checkCancellation()
         guard requestID == id else { throw CancellationError() }
-        try engine.play()
+        do {
+            try engine.play()
+        } catch {
+            errorMessage = error.localizedDescription
+            throw error
+        }
         position = engine.position
         status = .playing
         startProgressUpdates()
@@ -86,11 +125,9 @@ final class Player {
     }
 
     func stop() {
-        if currentTrack == nil {
-            resetPlayback()
-        } else {
-            currentTrack = nil
-        }
+        resetPlayback()
+        currentIndex = nil
+        activePlaylist = nil
     }
 
     func seek(to position: TimeInterval) throws {
@@ -100,6 +137,26 @@ final class Player {
         } catch {
             pause()
             throw error
+        }
+    }
+
+    private func handlePlaybackEnded() {
+        guard status == .playing else { return }
+        stopProgressUpdates()
+        position = duration ?? 0
+        status = .stopped
+
+        guard canGoNext else {
+            stop()
+            return
+        }
+
+        let id = requestID
+        Task { @MainActor [weak self] in
+            guard let self, self.requestID == id,
+                  self.status == .stopped, !self.isLoading else { return }
+            // play() publishes failures through errorMessage, including for auto-advance.
+            try? await self.next()
         }
     }
 
@@ -139,6 +196,9 @@ final class Player {
         } catch {
             if requestID == id {
                 resetPlayback()
+                if !(error is CancellationError) {
+                    errorMessage = error.localizedDescription
+                }
             }
             throw error
         }
@@ -157,6 +217,7 @@ final class Player {
         position = 0
         isLoading = false
         status = .stopped
+        errorMessage = nil
     }
 
     private func startProgressUpdates() {

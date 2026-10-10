@@ -3,7 +3,6 @@ import SwiftUI
 
 struct PlayerView: View {
     private let player = Player.shared
-    @State private var playbackError: String?
 
     private var hasTrack: Bool { player.currentTrack != nil }
     private var isPlaying: Bool { player.status == .playing }
@@ -37,8 +36,14 @@ struct PlayerView: View {
                 transportButton("Stop", systemImage: "stop.fill", action: player.stop)
                     .accessibilityIdentifier("playerStop")
 
-                transportButton("Previous track", systemImage: "backward.end.fill", isEnabled: false) {}
-                    .accessibilityIdentifier("playerPrevious")
+                transportButton(
+                    "Previous track",
+                    systemImage: "backward.end.fill",
+                    isEnabled: player.canGoPrevious
+                ) {
+                    performPlayback(player.previous)
+                }
+                .accessibilityIdentifier("playerPrevious")
 
                 transportButton(
                     isPlaying ? "Pause" : "Play",
@@ -48,8 +53,14 @@ struct PlayerView: View {
                 )
                 .accessibilityIdentifier("playerPlayPause")
 
-                transportButton("Next track", systemImage: "forward.end.fill", isEnabled: false) {}
-                    .accessibilityIdentifier("playerNext")
+                transportButton(
+                    "Next track",
+                    systemImage: "forward.end.fill",
+                    isEnabled: player.canGoNext
+                ) {
+                    performPlayback(player.next)
+                }
+                .accessibilityIdentifier("playerNext")
             }
             .disabled(!hasTrack)
         }
@@ -58,16 +69,16 @@ struct PlayerView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityIdentifier("playerView")
         .alert("Could not play track", isPresented: Binding(
-            get: { playbackError != nil },
+            get: { player.errorMessage != nil },
             set: { isPresented in
                 if !isPresented {
-                    playbackError = nil
+                    player.errorMessage = nil
                 }
             }
         )) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text(playbackError ?? "")
+            Text(player.errorMessage ?? "")
         }
     }
 
@@ -90,24 +101,22 @@ struct PlayerView: View {
     }
 
     private func togglePlayback() {
-        guard let track = player.currentTrack else { return }
+        guard let playlist = player.activePlaylist, let index = player.currentIndex else { return }
         if isPlaying {
             player.pause()
             return
         }
 
-        Task {
-            guard player.currentTrack == track else { return }
+        performPlayback {
+            guard player.activePlaylist?.id == playlist.id, player.currentIndex == index else { return }
+            try await player.play()
+        }
+    }
 
-            do {
-                try await player.play()
-            } catch is CancellationError {
-                // A stopped or replaced track does not need an error alert.
-            } catch {
-                if player.currentTrack == track {
-                    playbackError = error.localizedDescription
-                }
-            }
+    private func performPlayback(_ action: @escaping @MainActor () async throws -> Void) {
+        Task {
+            // Player publishes failures through errorMessage; cancellation needs no alert.
+            try? await action()
         }
     }
 

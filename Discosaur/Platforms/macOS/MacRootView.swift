@@ -23,7 +23,7 @@ struct MacRootView: View {
             }
             .padding()
 
-            TrackList(tracks: selector.playlist?.tracks ?? [])
+            TrackList(playlist: selector.playlist)
 
             Divider()
             PlayerView()

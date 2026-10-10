@@ -2,19 +2,24 @@ import Foundation
 import SwiftUI
 
 struct TrackRow: View {
-    let track: Track
+    let playlist: Playlist
+    let index: Int
     let player: Player
-    let onPlaybackError: (Error) -> Void
+
+    private var track: Track { playlist.tracks[index] }
+    private var isCurrentTrack: Bool {
+        player.activePlaylist?.id == playlist.id && player.currentIndex == index
+    }
 
     @State private var isHovered = false
     @FocusState private var isPlaybackFocused: Bool
 
     private var isPlaying: Bool {
-        player.currentTrack == track && player.status == .playing
+        isCurrentTrack && player.status == .playing
     }
 
     private var isLoading: Bool {
-        player.currentTrack == track && player.isLoading
+        isCurrentTrack && player.isLoading
     }
 
     private var showsPlaybackControl: Bool {
@@ -55,19 +60,11 @@ struct TrackRow: View {
             return
         }
 
-        player.currentTrack = track
+        player.selectTrack(in: playlist, at: index)
         Task {
-            guard player.currentTrack == track else { return }
-
-            do {
-                try await player.play()
-            } catch is CancellationError {
-                // Switching tracks or stopping during loading is not a playback error.
-            } catch {
-                if player.currentTrack == track {
-                    onPlaybackError(error)
-                }
-            }
+            guard isCurrentTrack else { return }
+            // Playback errors are exposed by Player and presented in the player bar.
+            try? await player.play()
         }
     }
 }

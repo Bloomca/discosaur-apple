@@ -2,6 +2,7 @@ import Foundation
 
 nonisolated struct Track: Identifiable, Equatable, Sendable {
     let url: URL
+    let location: FileLocation?
     let title: String?
     let artist: String?
     let album: Album?
@@ -13,12 +14,13 @@ nonisolated struct Track: Identifiable, Equatable, Sendable {
     var fileName: String { url.lastPathComponent }
     var name: String { title ?? fileName }
 
-    init(url: URL) {
-        self.init(url: url, metadata: TrackMetadata(), album: nil)
+    init(url: URL, location: FileLocation? = nil) {
+        self.init(url: url, metadata: TrackMetadata(), album: nil, location: location)
     }
 
-    init(url: URL, metadata: TrackMetadata, album: Album?) {
+    init(url: URL, metadata: TrackMetadata, album: Album?, location: FileLocation? = nil) {
         self.url = url.standardizedFileURL
+        self.location = location
         title = metadata.title
         artist = metadata.artist
         self.album = album

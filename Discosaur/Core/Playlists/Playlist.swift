@@ -2,10 +2,12 @@ import Foundation
 
 nonisolated struct Playlist: Identifiable, Equatable, Sendable {
     let id: UUID
+    let name: String
     let tracks: [Track]
 
     init(id: UUID = UUID(), tracks: [Track]) {
         self.id = id
+        self.name = "New playlist"
         self.tracks = tracks
     }
 

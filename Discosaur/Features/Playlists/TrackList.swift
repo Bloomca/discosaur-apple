@@ -2,8 +2,7 @@ import SwiftUI
 
 struct TrackList: View {
     let playlist: Playlist?
-
-    private let player = Player.shared
+    let player: Player
 
     var body: some View {
         List {

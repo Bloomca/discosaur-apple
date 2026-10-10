@@ -31,13 +31,7 @@ nonisolated struct TrackScanner: Sendable {
         for url in urls {
             try Task.checkCancellation()
 
-            let hasScopedAccess = url.startAccessingSecurityScopedResource()
-            defer {
-                if hasScopedAccess {
-                    url.stopAccessingSecurityScopedResource()
-                }
-            }
-
+            // The caller holds selected-root access throughout scanning and metadata reads.
             let resources = try url.resourceValues(forKeys: Self.resourceKeys)
             if resources.isDirectory == true {
                 var enumerationError: Error?

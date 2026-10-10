@@ -8,10 +8,10 @@ nonisolated protocol TrackMetadataReading: Sendable {
 
 extension TrackMetadataReading {
     @concurrent
-    func readMetadata(for tracks: [Track]) async throws -> [(url: URL, metadata: TrackMetadata)] {
+    func readMetadata(for tracks: [Track]) async throws -> [(url: URL, metadata: TrackMetadata, location: FileLocation?)] {
         try Task.checkCancellation()
         return try await withThrowingTaskGroup(of: (Int, TrackMetadata).self) { group in
-            var result = tracks.map { (url: $0.url, metadata: TrackMetadata()) }
+            var result = tracks.map { (url: $0.url, metadata: TrackMetadata(), location: $0.location) }
             var remaining = tracks.enumerated().makeIterator()
 
             // Limit simultaneous file reads, while preserving the scanned order.

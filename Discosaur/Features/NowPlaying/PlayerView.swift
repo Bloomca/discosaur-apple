@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 
 struct PlayerView: View {
-    private let player = Player.shared
+    let player: Player
 
     private var hasTrack: Bool { player.currentTrack != nil }
     private var isPlaying: Bool { player.status == .playing }

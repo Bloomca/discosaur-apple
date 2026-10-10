@@ -3,25 +3,27 @@ import SwiftUI
 
 struct MacRootView: View {
     let library: Library
+    let player: Player
     @State private var selector: PlaylistSelector
     @State private var viewMode: PlaylistViewMode = .list
 
-    init(library: Library) {
+    init(library: Library, fileAccessManager: FileAccessManager, player: Player) {
         self.library = library
-        _selector = State(initialValue: PlaylistSelector(library: library))
+        self.player = player
+        _selector = State(initialValue: PlaylistSelector(library: library, fileAccessManager: fileAccessManager))
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             switch viewMode {
             case .list:
-                TrackList(playlist: library.currentPlaylist)
+                TrackList(playlist: library.currentPlaylist, player: player)
             case .albums:
-                AlbumGallery(playlist: library.currentPlaylist)
+                AlbumGallery(playlist: library.currentPlaylist, player: player)
             }
 
             Divider()
-            PlayerView()
+            PlayerView(player: player)
         }
         .frame(minWidth: 480, minHeight: 320)
         .toolbar {
@@ -55,7 +57,7 @@ struct MacRootView: View {
                 SelectFilesButton { urls in
                     Task {
                         if let playlist = await selector.selectFiles(urls) {
-                            Player.shared.updatePlaylist(playlist)
+                            player.updatePlaylist(playlist)
                         }
                     }
                 }
@@ -83,6 +85,12 @@ private enum PlaylistViewMode: Hashable {
 }
 
 #Preview {
-    MacRootView(library: Library())
+    let library = Library()
+    let fileAccessManager = FileAccessManager(library: library)
+    MacRootView(
+        library: library,
+        fileAccessManager: fileAccessManager,
+        player: Player(engine: AVFilePlaybackEngine(), fileAccessManager: fileAccessManager)
+    )
 }
 #endif

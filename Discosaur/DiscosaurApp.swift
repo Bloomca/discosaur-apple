@@ -9,12 +9,25 @@ import SwiftUI
 
 @main
 struct DiscosaurApp: App {
-    @State private var library = Library()
+    @State private var library: Library
+    @State private var fileAccessManager: FileAccessManager
+    @State private var player: Player
+
+    init() {
+        let library = Library()
+        let fileAccessManager = FileAccessManager(library: library)
+        _library = State(initialValue: library)
+        _fileAccessManager = State(initialValue: fileAccessManager)
+        _player = State(initialValue: Player(
+            engine: AVFilePlaybackEngine(),
+            fileAccessManager: fileAccessManager
+        ))
+    }
 
     var body: some Scene {
         WindowGroup {
             #if os(macOS)
-            MacRootView(library: library)
+            MacRootView(library: library, fileAccessManager: fileAccessManager, player: player)
             #else
             ContentView()
             #endif

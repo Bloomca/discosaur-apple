@@ -4,7 +4,7 @@ import ImageIO
 nonisolated struct AlbumResolver: Sendable {
     @concurrent
     func resolve(
-        _ files: [(url: URL, metadata: TrackMetadata)],
+        _ files: [(url: URL, metadata: TrackMetadata, location: FileLocation?)],
         selectedURLs: [URL]
     ) async throws -> [Track] {
         try Task.checkCancellation()
@@ -74,13 +74,13 @@ nonisolated struct AlbumResolver: Sendable {
         // Runtime tracks contain resolved albums, not a second copy of their raw tags.
         return try files.enumerated().map { index, file in
             try Task.checkCancellation()
-            return Track(url: file.url, metadata: file.metadata, album: albumsByIndex[index])
+            return Track(url: file.url, metadata: file.metadata, album: albumsByIndex[index], location: file.location)
         }
     }
 
     private func artistGroups(
         for indices: [Int],
-        in files: [(url: URL, metadata: TrackMetadata)]
+        in files: [(url: URL, metadata: TrackMetadata, location: FileLocation?)]
     ) -> [ArtistGroup] {
         var groups: [String: ArtistGroup] = [:]
         for index in indices {
@@ -118,7 +118,7 @@ nonisolated struct AlbumResolver: Sendable {
 
     private func yearGroups(
         for indices: [Int],
-        in files: [(url: URL, metadata: TrackMetadata)]
+        in files: [(url: URL, metadata: TrackMetadata, location: FileLocation?)]
     ) -> [(year: Int?, indices: [Int])] {
         let years = Set(indices.compactMap { files[$0].metadata.year })
         if years.count <= 1 {

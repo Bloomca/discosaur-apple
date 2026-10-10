@@ -10,8 +10,6 @@ final class Player {
         case playing
     }
 
-    static let shared = Player()
-
     private(set) var activePlaylist: Playlist?
     private(set) var currentIndex: Int?
     private var playbackAlbumID: AlbumGroup.ID?
@@ -70,21 +68,23 @@ final class Player {
     }
 
     @ObservationIgnored private let engine: any FilePlaybackEngine
+    @ObservationIgnored private let fileAccessManager: FileAccessManager
     @ObservationIgnored private var loadedURL: URL?
-    @ObservationIgnored private var scopedURL: URL?
+    @ObservationIgnored private var fileAccess: ScopedFileAccess?
     @ObservationIgnored private var requestID = UUID()
     @ObservationIgnored private var progressTask: Task<Void, Never>?
 
-    private convenience init() {
-        self.init(engine: AVFilePlaybackEngine())
-    }
-
-    init(engine: any FilePlaybackEngine) {
+    init(engine: any FilePlaybackEngine, fileAccessManager: FileAccessManager? = nil) {
         self.engine = engine
+        self.fileAccessManager = fileAccessManager ?? FileAccessManager(library: Library())
         engine.volume = volumeValue
         engine.onPlaybackEnded = { [weak self] in
             self?.handlePlaybackEnded()
         }
+    }
+
+    isolated deinit {
+        resetPlayback()
     }
 
     func selectTrack(in playlist: Playlist, at index: Int) {
@@ -239,27 +239,32 @@ final class Player {
             }
         }
 
-        // Authorization stays outside the engine and is held while the file is
-        // loaded, including while paused. Container files need no scoped grant.
-        let hasScopedAccess = track.url.startAccessingSecurityScopedResource()
+        // A track inside a selected folder holds that folder's grant
+        // so we need to keep it alive
+        var access: ScopedFileAccess?
         var keepsAccess = false
         defer {
-            if hasScopedAccess, !keepsAccess {
-                track.url.stopAccessingSecurityScopedResource()
+            if !keepsAccess {
+                access?.close()
             }
         }
 
         do {
-            let info = try await engine.loadFile(at: track.url)
+            let acquired: ScopedFileAccess
+            if let location = track.location {
+                acquired = try fileAccessManager.acquire(location)
+            } else {
+                acquired = try fileAccessManager.acquireLocalFile(at: track.url)
+            }
+            access = acquired
+            let info = try await engine.loadFile(at: acquired.resourceURL)
             try Task.checkCancellation()
             guard requestID == id else { throw CancellationError() }
 
             fileInfo = info
             loadedURL = track.url
-            if hasScopedAccess {
-                scopedURL = track.url
-                keepsAccess = true
-            }
+            fileAccess = acquired
+            keepsAccess = true
         } catch {
             if requestID == id {
                 resetPlayback()
@@ -275,10 +280,8 @@ final class Player {
         requestID = UUID()
         stopProgressUpdates()
         engine.stop()
-        if let scopedURL {
-            scopedURL.stopAccessingSecurityScopedResource()
-        }
-        scopedURL = nil
+        fileAccess?.close()
+        fileAccess = nil
         loadedURL = nil
         fileInfo = nil
         position = 0

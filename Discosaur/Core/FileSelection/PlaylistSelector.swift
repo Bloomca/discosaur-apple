@@ -8,12 +8,18 @@ final class PlaylistSelector {
     var errorMessage: String?
 
     private let library: Library
+    private let fileAccessManager: FileAccessManager
     private let scanner = TrackScanner()
     private let albumResolver = AlbumResolver()
     private let metadataReader: any TrackMetadataReading
 
-    init(library: Library, metadataReader: any TrackMetadataReading = AVTrackMetadataReader()) {
+    init(
+        library: Library,
+        fileAccessManager: FileAccessManager? = nil,
+        metadataReader: any TrackMetadataReading = AVTrackMetadataReader()
+    ) {
         self.library = library
+        self.fileAccessManager = fileAccessManager ?? FileAccessManager(library: library)
         self.metadataReader = metadataReader
     }
 
@@ -27,24 +33,29 @@ final class PlaylistSelector {
         errorMessage = nil
         defer { isLoading = false }
 
-        // Keep selected folder/file grants alive for scanning, metadata, and cover reads.
-        // Child track URLs may not have security-scoped grants of their own.
-        let scopedURLs = urls.filter { $0.startAccessingSecurityScopedResource() }
+        var prepared: [(source: FileSource, access: ScopedFileAccess)] = []
         defer {
-            for url in scopedURLs {
-                url.stopAccessingSecurityScopedResource()
+            for selection in prepared {
+                selection.access.close()
             }
         }
 
         do {
-            let scannedTracks = try await scanner.tracks(from: urls)
+            for url in urls {
+                try Task.checkCancellation()
+                prepared.append(try fileAccessManager.prepareSource(for: url))
+            }
+            let selectedURLs = prepared.map { $0.access.resourceURL }
+            let scannedTracks = try await scanner.tracks(from: selectedURLs)
             let destination = playlistID.flatMap { library.playlist(id: $0) } ?? library.currentPlaylist
             let existingURLs = Set(destination?.tracks.map(\.url) ?? [])
-            let newTracks = scannedTracks.filter { !existingURLs.contains($0.url) }
+            let newTracks = try scannedTracks.filter { !existingURLs.contains($0.url) }.map {
+                Track(url: $0.url, location: try location(for: $0.url, in: prepared))
+            }
             guard !newTracks.isEmpty else { return nil }
 
             let files = try await metadataReader.readMetadata(for: newTracks)
-            let tracks = try await albumResolver.resolve(files, selectedURLs: urls)
+            let tracks = try await albumResolver.resolve(files, selectedURLs: selectedURLs)
             let sortedTracks = try await Playlist.sortedTracks(tracks)
             try Task.checkCancellation()
             // Re-read the destination after suspension to preserve other imports/edits.
@@ -54,6 +65,13 @@ final class PlaylistSelector {
             let currentURLs = Set(existingTracks.map(\.url))
             let addedTracks = sortedTracks.filter { !currentURLs.contains($0.url) }
             guard !addedTracks.isEmpty else { return nil }
+
+            // Commit only sources used by successfully imported tracks. Failed, cancelled,
+            // duplicate, and empty selections leave no orphaned source records.
+            let usedSourceIDs = Set(addedTracks.compactMap { $0.location?.sourceID })
+            for selection in prepared where usedSourceIDs.contains(selection.source.id) {
+                library.updateSource(selection.source)
+            }
 
             // Keep existing order and identity, appending only the new sorted batch.
             let playlist = Playlist(id: currentDestination?.id ?? UUID(), tracks: existingTracks + addedTracks)
@@ -65,5 +83,28 @@ final class PlaylistSelector {
             errorMessage = error.localizedDescription
         }
         return nil
+    }
+
+    private func location(
+        for url: URL,
+        in prepared: [(source: FileSource, access: ScopedFileAccess)]
+    ) throws -> FileLocation {
+        // Prefer folder grants, including when the same track was explicitly selected.
+        // More specific selected folders win over their parents.
+        let folders = prepared.filter { $0.source.kind == .folder }.sorted {
+            $0.access.resourceURL.pathComponents.count > $1.access.resourceURL.pathComponents.count
+        }
+        for folder in folders {
+            if let path = FileLocation.relativePath(of: url, inside: folder.access.resourceURL) {
+                return .insideFolder(sourceID: folder.source.id, relativePath: path)
+            }
+        }
+        let canonicalURL = url.standardizedFileURL.resolvingSymlinksInPath()
+        for file in prepared where file.source.kind == .file {
+            if file.access.resourceURL.standardizedFileURL.resolvingSymlinksInPath() == canonicalURL {
+                return .selectedFile(sourceID: file.source.id)
+            }
+        }
+        throw FileAccessError.outsideSource(url)
     }
 }

@@ -5,6 +5,7 @@ import Observation
 @Observable
 final class Library {
     private(set) var playlists: [Playlist] = []
+    private(set) var sources: [FileSource] = []
     private(set) var currentPlaylistID: UUID?
 
     var currentPlaylist: Playlist? {
@@ -14,6 +15,18 @@ final class Library {
 
     func playlist(id: UUID) -> Playlist? {
         playlists.first { $0.id == id }
+    }
+
+    func source(id: UUID) -> FileSource? {
+        sources.first { $0.id == id }
+    }
+
+    func updateSource(_ source: FileSource) {
+        if let index = sources.firstIndex(where: { $0.id == source.id }) {
+            sources[index] = source
+        } else {
+            sources.append(source)
+        }
     }
 
     // Insert or replace a playlist, selecting only the first one added.

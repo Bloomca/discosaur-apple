@@ -10,19 +10,19 @@ struct LibraryTests {
         let library = Library()
 
         #expect(library.playlists.isEmpty)
-        #expect(library.currentPlaylistID == nil)
-        #expect(library.currentPlaylist == nil)
+        #expect(library.selectedPlaylistID == nil)
+        #expect(library.selectedPlaylist == nil)
     }
 
-    @Test func firstPlaylistBecomesCurrent() {
+    @Test func firstPlaylistBecomesSelected() {
         let library = Library()
         let playlist = Playlist(tracks: [])
 
         library.updatePlaylist(playlist)
 
         #expect(library.playlists == [playlist])
-        #expect(library.currentPlaylistID == playlist.id)
-        #expect(library.currentPlaylist == playlist)
+        #expect(library.selectedPlaylistID == playlist.id)
+        #expect(library.selectedPlaylist == playlist)
         #expect(library.playlist(id: playlist.id) == playlist)
     }
 
@@ -35,11 +35,11 @@ struct LibraryTests {
         library.updatePlaylist(second)
 
         #expect(library.playlists == [first, second])
-        #expect(library.currentPlaylist == first)
+        #expect(library.selectedPlaylist == first)
         #expect(library.playlist(id: second.id) == second)
     }
 
-    @Test func replacingCurrentPlaylistPreservesIdentityAndSelection() {
+    @Test func replacingSelectedPlaylistPreservesIdentityAndSelection() {
         let library = Library()
         let original = Playlist(tracks: [])
         let other = Playlist(tracks: [])
@@ -53,8 +53,8 @@ struct LibraryTests {
         library.updatePlaylist(updated)
 
         #expect(library.playlists == [updated, other])
-        #expect(library.currentPlaylistID == original.id)
-        #expect(library.currentPlaylist == updated)
+        #expect(library.selectedPlaylistID == original.id)
+        #expect(library.selectedPlaylist == updated)
     }
 
     @Test func selectingAnotherPlaylistAndUpdatingThePreviousOnePreservesSelection() {
@@ -71,32 +71,32 @@ struct LibraryTests {
         )
         library.updatePlaylist(updated)
 
-        #expect(library.currentPlaylistID == second.id)
-        #expect(library.currentPlaylist == second)
+        #expect(library.selectedPlaylistID == second.id)
+        #expect(library.selectedPlaylist == second)
         #expect(library.playlists == [updated, second])
     }
 
-    @Test func unknownPlaylistCannotBecomeCurrent() {
+    @Test func unknownPlaylistCannotBecomeSelected() {
         let library = Library()
         let unknownID = UUID()
         library.selectPlaylist(id: unknownID)
-        #expect(library.currentPlaylist == nil)
+        #expect(library.selectedPlaylist == nil)
 
         let playlist = Playlist(tracks: [])
         library.updatePlaylist(playlist)
         library.selectPlaylist(id: unknownID)
 
-        #expect(library.currentPlaylist == playlist)
+        #expect(library.selectedPlaylist == playlist)
         #expect(library.playlist(id: unknownID) == nil)
     }
 
-    @Test func currentPlaylistUpdatesAreObservable() {
+    @Test func selectedPlaylistUpdatesAreObservable() {
         let library = Library()
         let original = Playlist(tracks: [])
         library.updatePlaylist(original)
         let didChange = Mutex(false)
         withObservationTracking {
-            _ = library.currentPlaylist
+            _ = library.selectedPlaylist
         } onChange: {
             didChange.withLock { $0 = true }
         }

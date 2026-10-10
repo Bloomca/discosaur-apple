@@ -5,9 +5,9 @@ nonisolated struct Playlist: Identifiable, Equatable, Sendable {
     let name: String
     let tracks: [Track]
 
-    init(id: UUID = UUID(), tracks: [Track]) {
+    init(id: UUID = UUID(), name: String = "New playlist", tracks: [Track]) {
         self.id = id
-        self.name = "New playlist"
+        self.name = name
         self.tracks = tracks
     }
 

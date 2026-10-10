@@ -6,11 +6,12 @@ import Observation
 final class Library {
     private(set) var playlists: [Playlist] = []
     private(set) var sources: [FileSource] = []
-    private(set) var currentPlaylistID: UUID?
+    private(set) var selectedPlaylistID: UUID?
 
-    var currentPlaylist: Playlist? {
-        guard let currentPlaylistID else { return nil }
-        return playlist(id: currentPlaylistID)
+    // Browsing selection is independent of Player.activePlaylist and its queue.
+    var selectedPlaylist: Playlist? {
+        guard let selectedPlaylistID else { return nil }
+        return playlist(id: selectedPlaylistID)
     }
 
     func playlist(id: UUID) -> Playlist? {
@@ -37,13 +38,27 @@ final class Library {
             playlists.append(playlist)
         }
 
-        if currentPlaylistID == nil {
-            currentPlaylistID = playlist.id
+        if selectedPlaylistID == nil {
+            selectedPlaylistID = playlist.id
         }
     }
 
     func selectPlaylist(id: UUID) {
         guard playlist(id: id) != nil else { return }
-        currentPlaylistID = id
+        selectedPlaylistID = id
+    }
+
+    @discardableResult
+    func createPlaylist() -> Playlist {
+        let playlist = Playlist(tracks: [])
+        updatePlaylist(playlist)
+        selectPlaylist(id: playlist.id)
+        return playlist
+    }
+
+    func renamePlaylist(id: UUID, to name: String) {
+        guard let playlist = playlist(id: id), playlist.name != name,
+              !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        updatePlaylist(Playlist(id: playlist.id, name: name, tracks: playlist.tracks))
     }
 }

@@ -6,6 +6,7 @@ struct MacRootView: View {
     let player: Player
     @State private var selector: PlaylistSelector
     @State private var viewMode: PlaylistViewMode = .list
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     init(library: Library, fileAccessManager: FileAccessManager, player: Player) {
         self.library = library
@@ -14,12 +15,30 @@ struct MacRootView: View {
     }
 
     var body: some View {
+        // NavigationSplitView supplies the standard sidebar toggle in the toolbar.
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            PlaylistSidebar(library: library)
+                .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
+        } detail: {
+            if let playlist = library.selectedPlaylist {
+                playlistContent
+                    .navigationTitle(playlistName(for: playlist.id))
+            } else {
+                playlistContent
+                    .navigationTitle("Discosaur")
+            }
+        }
+        .navigationSplitViewStyle(.balanced)
+        .frame(minWidth: 700, minHeight: 320)
+    }
+
+    private var playlistContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             switch viewMode {
             case .list:
-                TrackList(playlist: library.currentPlaylist, player: player)
+                TrackList(playlist: library.selectedPlaylist, player: player)
             case .albums:
-                AlbumGallery(playlist: library.currentPlaylist, player: player)
+                AlbumGallery(playlist: library.selectedPlaylist, player: player)
             }
 
             Divider()
@@ -27,8 +46,6 @@ struct MacRootView: View {
         }
         .frame(minWidth: 480, minHeight: 320)
         .toolbar {
-            ToolbarSpacer(.flexible, placement: .primaryAction)
-            
             ToolbarItem(placement: .primaryAction) {
                 Picker("Playlist View", selection: $viewMode) {
                     Label("List", systemImage: "list.bullet")
@@ -76,6 +93,20 @@ struct MacRootView: View {
         } message: {
             Text(selector.errorMessage ?? "")
         }
+    }
+
+    private func playlistName(for id: Playlist.ID) -> Binding<String> {
+        // Capture the edited playlist's identity, not a selection that can change.
+        Binding(
+            get: { library.playlist(id: id)?.name ?? "Discosaur" },
+            set: { name in
+                library.renamePlaylist(id: id, to: name)
+                if let playlist = library.playlist(id: id) {
+                    // Refresh metadata only when this is the playing playlist.
+                    player.updatePlaylist(playlist)
+                }
+            }
+        )
     }
 }
 

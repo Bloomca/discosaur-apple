@@ -33,8 +33,7 @@ struct DiscosaurApp: App {
             #endif
         }
         #if os(macOS)
-        .windowStyle(.hiddenTitleBar)
-        .windowToolbarStyle(.unified)
+        .windowToolbarStyle(.unified(showsTitle: true))
         #endif
     }
 }

@@ -160,6 +160,73 @@ struct PlayerPlaylistTests {
         #expect(!player.canGoNext)
     }
 
+    @Test(arguments: [false, true])
+    func browsingAndCreatingPlaylistsDoNotChangePlaybackOrItsQueue(paused: Bool) async throws {
+        let library = Library()
+        let engine = PlaylistTestEngine()
+        let player = Player(engine: engine)
+        defer { player.stop() }
+        let first = Track(url: URL(fileURLWithPath: "/Music/first.mp3"))
+        let next = Track(url: URL(fileURLWithPath: "/Music/next.mp3"))
+        let playing = Playlist(name: "Playing", tracks: [first, next])
+        let browsing = Playlist(name: "Browsing", tracks: [Track(url: URL(fileURLWithPath: "/Music/other.mp3"))])
+        library.updatePlaylist(playing)
+        library.updatePlaylist(browsing)
+        player.selectTrack(in: playing, at: 0)
+        try await player.play()
+        try player.seek(to: 12)
+        if paused { player.pause() }
+        let stopCount = engine.stopCount
+        let pauseCount = engine.pauseCount
+
+        library.selectPlaylist(id: browsing.id)
+        #expect(library.selectedPlaylist == browsing)
+        #expect(player.activePlaylist == playing)
+        let created = library.createPlaylist()
+        #expect(library.selectedPlaylist == created)
+        #expect(player.activePlaylist == playing)
+        #expect(player.currentTrack == first)
+        #expect(player.position == 12)
+        #expect(player.status == (paused ? .paused : .playing))
+        #expect(engine.loadedURLs == [first.url])
+        #expect(engine.playCount == 1)
+        #expect(engine.stopCount == stopCount)
+        #expect(engine.pauseCount == pauseCount)
+
+        try await player.next()
+        #expect(player.currentTrack == next)
+        #expect(player.activePlaylist == playing)
+        #expect(library.selectedPlaylist == created)
+        #expect(engine.loadedURLs == [first.url, next.url])
+    }
+
+    @Test func renamingThePlayingPlaylistRefreshesItsNameWithoutRestartingPlayback() async throws {
+        let library = Library()
+        let engine = PlaylistTestEngine()
+        let player = Player(engine: engine)
+        defer { player.stop() }
+        let track = Track(url: URL(fileURLWithPath: "/Music/song.mp3"))
+        let playing = Playlist(name: "Playing", tracks: [track])
+        library.updatePlaylist(playing)
+        player.selectTrack(in: playing, at: 0)
+        try await player.play()
+        try player.seek(to: 12)
+        let browsing = library.createPlaylist()
+        let stopCount = engine.stopCount
+
+        library.renamePlaylist(id: playing.id, to: "Renamed")
+        player.updatePlaylist(try #require(library.playlist(id: playing.id)))
+
+        #expect(player.activePlaylist?.name == "Renamed")
+        #expect(player.currentTrack == track)
+        #expect(player.position == 12)
+        #expect(player.status == .playing)
+        #expect(library.selectedPlaylist == browsing)
+        #expect(engine.loadedURLs == [track.url])
+        #expect(engine.playCount == 1)
+        #expect(engine.stopCount == stopCount)
+    }
+
     private func albumTrack(_ filename: String, title: String = "Album", disc: Int = 1, number: Int) -> Track {
         Track(
             url: URL(fileURLWithPath: "/Music/Disc \(disc)/\(filename)"),

@@ -14,13 +14,15 @@ struct PlaylistSelectorTests {
         let selector = PlaylistSelector(library: library, metadataReader: SelectionMetadataReader())
 
         let imported = await selector.selectFiles([existing])
-        let original = try #require(library.currentPlaylist)
+        let original = try #require(library.selectedPlaylist)
         #expect(imported == original)
+        library.renamePlaylist(id: original.id, to: "Favourites")
         await selector.selectFiles([tenth, second])
 
-        let playlist = try #require(library.currentPlaylist)
+        let playlist = try #require(library.selectedPlaylist)
         #expect(library.playlists == [playlist])
         #expect(playlist.id == original.id)
+        #expect(playlist.name == "Favourites")
         #expect(playlist.tracks.map(\.url) == [existing, second, tenth])
         #expect(playlist.tracks.first == original.tracks.first)
         #expect(selector.errorMessage == nil)
@@ -35,12 +37,12 @@ struct PlaylistSelectorTests {
         let library = Library()
         let selector = PlaylistSelector(library: library, metadataReader: reader)
         await selector.selectFiles([existing])
-        let original = try #require(library.currentPlaylist)
+        let original = try #require(library.selectedPlaylist)
         let added = try fixture.file("Album/added.mp3")
 
         await selector.selectFiles([fixture.directory, existing])
 
-        let playlist = try #require(library.currentPlaylist)
+        let playlist = try #require(library.selectedPlaylist)
         #expect(playlist.id == original.id)
         #expect(playlist.tracks.map(\.url) == [existing, added])
         #expect(playlist.tracks.first == original.tracks.first)
@@ -59,7 +61,7 @@ struct PlaylistSelectorTests {
         await selector.selectFiles([first])
         await selector.selectFiles([second])
 
-        #expect(library.currentPlaylist?.tracks.map(\.url) == [first, second])
+        #expect(library.selectedPlaylist?.tracks.map(\.url) == [first, second])
     }
 
     @Test func duplicateAndEmptySelectionsLeaveLibraryUnchanged() async throws {
@@ -73,7 +75,7 @@ struct PlaylistSelectorTests {
         #expect(await selector.selectFiles([]) == nil)
         #expect(library.playlists.isEmpty)
         await selector.selectFiles([existing])
-        let original = try #require(library.currentPlaylist)
+        let original = try #require(library.selectedPlaylist)
 
         #expect(await selector.selectFiles([existing, existing]) == nil)
         #expect(library.playlists == [original])
@@ -93,12 +95,12 @@ struct PlaylistSelectorTests {
         let library = Library()
         let selector = PlaylistSelector(library: library, metadataReader: SelectionMetadataReader())
         await selector.selectFiles([existing])
-        let original = try #require(library.currentPlaylist)
+        let original = try #require(library.selectedPlaylist)
 
         #expect(await selector.selectFiles([added, missing]) == nil)
 
         #expect(library.playlists == [original])
-        #expect(library.currentPlaylist == original)
+        #expect(library.selectedPlaylist == original)
         #expect(selector.errorMessage != nil)
         #expect(!selector.isLoading)
     }
@@ -112,12 +114,12 @@ struct PlaylistSelectorTests {
         let library = Library()
         let selector = PlaylistSelector(library: library, metadataReader: reader)
         await selector.selectFiles([existing])
-        let original = try #require(library.currentPlaylist)
+        let original = try #require(library.selectedPlaylist)
 
         #expect(await selector.selectFiles([added]) == nil)
 
         #expect(library.playlists == [original])
-        #expect(library.currentPlaylist == original)
+        #expect(library.selectedPlaylist == original)
         #expect(selector.errorMessage == nil)
         #expect(!selector.isLoading)
     }
@@ -138,8 +140,8 @@ struct PlaylistSelectorTests {
 
         #expect(imported?.id == second.id)
         #expect(library.playlist(id: first.id) == first)
-        #expect(library.currentPlaylist?.id == second.id)
-        #expect(library.currentPlaylist?.tracks.map(\.url) == [shared])
+        #expect(library.selectedPlaylist?.id == second.id)
+        #expect(library.selectedPlaylist?.tracks.map(\.url) == [shared])
         #expect(library.playlists.count == 2)
     }
 
@@ -163,7 +165,7 @@ struct PlaylistSelectorTests {
 
         #expect(imported?.id == first.id)
         #expect(library.playlist(id: first.id)?.tracks.map(\.url) == [added])
-        #expect(library.currentPlaylist == second)
+        #expect(library.selectedPlaylist == second)
         #expect(library.playlists.count == 2)
     }
 
@@ -180,13 +182,14 @@ struct PlaylistSelectorTests {
         let task = Task { await selector.selectFiles([added]) }
         await reader.waitUntilReading()
 
-        library.updatePlaylist(Playlist(id: original.id, tracks: [Track(url: other)]))
+        library.updatePlaylist(Playlist(id: original.id, name: "Renamed during import", tracks: [Track(url: other)]))
         await reader.resume()
         let imported = await task.value
 
         #expect(imported?.id == original.id)
-        #expect(library.currentPlaylist?.id == original.id)
-        #expect(library.currentPlaylist?.tracks.map(\.url) == [other, added])
+        #expect(imported?.name == "Renamed during import")
+        #expect(library.selectedPlaylist?.id == original.id)
+        #expect(library.selectedPlaylist?.tracks.map(\.url) == [other, added])
     }
 
     @Test func overlappingFirstImportsShareOnePlaylistAndDoNotDuplicateTracks() async throws {
@@ -207,7 +210,31 @@ struct PlaylistSelectorTests {
         #expect(imported != nil)
         #expect(duplicateImport == nil)
         #expect(library.playlists.count == 1)
-        #expect(library.currentPlaylist?.tracks.map(\.url) == [shared])
+        #expect(library.selectedPlaylist?.tracks.map(\.url) == [shared])
+    }
+
+    @Test func creatingAPlaylistDuringImportDoesNotRedirectTracksOrSelection() async throws {
+        let fixture = try PlaylistSelectionFixture()
+        defer { fixture.remove() }
+        let added = try fixture.file("added.mp3")
+        let library = Library()
+        let original = library.createPlaylist()
+        let reader = SuspendedSelectionMetadataReader()
+        let selector = PlaylistSelector(library: library, metadataReader: reader)
+        let task = Task { await selector.selectFiles([added]) }
+        await reader.waitUntilReading()
+
+        let created = library.createPlaylist()
+        library.renamePlaylist(id: original.id, to: "Original destination")
+        await reader.resume()
+        let imported = await task.value
+
+        #expect(imported?.id == original.id)
+        #expect(imported?.name == "Original destination")
+        #expect(library.playlist(id: original.id)?.tracks.map(\.url) == [added])
+        #expect(library.selectedPlaylist == created)
+        #expect(created.tracks.isEmpty)
+        #expect(library.playlists.count == 2)
     }
 }
 

@@ -28,7 +28,7 @@ final class PlaylistSelector {
         guard !isLoading, !Task.isCancelled else { return nil }
 
         // Keep importing into the original playlist if the selection changes mid-import.
-        let playlistID = library.currentPlaylistID
+        let playlistID = library.selectedPlaylistID
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
@@ -47,7 +47,7 @@ final class PlaylistSelector {
             }
             let selectedURLs = prepared.map { $0.access.resourceURL }
             let scannedTracks = try await scanner.tracks(from: selectedURLs)
-            let destination = playlistID.flatMap { library.playlist(id: $0) } ?? library.currentPlaylist
+            let destination = playlistID.flatMap { library.playlist(id: $0) } ?? library.selectedPlaylist
             let existingURLs = Set(destination?.tracks.map(\.url) ?? [])
             let newTracks = try scannedTracks.filter { !existingURLs.contains($0.url) }.map {
                 Track(url: $0.url, location: try location(for: $0.url, in: prepared))
@@ -60,7 +60,7 @@ final class PlaylistSelector {
             try Task.checkCancellation()
             // Re-read the destination after suspension to preserve other imports/edits.
             // First imports can share a playlist created while this import was suspended.
-            let currentDestination = playlistID.flatMap { library.playlist(id: $0) } ?? library.currentPlaylist
+            let currentDestination = playlistID.flatMap { library.playlist(id: $0) } ?? library.selectedPlaylist
             let existingTracks = currentDestination?.tracks ?? []
             let currentURLs = Set(existingTracks.map(\.url))
             let addedTracks = sortedTracks.filter { !currentURLs.contains($0.url) }
@@ -73,12 +73,17 @@ final class PlaylistSelector {
                 library.updateSource(selection.source)
             }
 
-            // Keep existing order and identity, appending only the new sorted batch.
-            let playlist = Playlist(id: currentDestination?.id ?? UUID(), tracks: existingTracks + addedTracks)
+            // Preserve order, identity, and the latest name, including mid-import renames.
+            let destinationPlaylist = currentDestination ?? Playlist(tracks: [])
+            let playlist = Playlist(
+                id: destinationPlaylist.id,
+                name: destinationPlaylist.name,
+                tracks: existingTracks + addedTracks
+            )
             library.updatePlaylist(playlist)
             return playlist
         } catch is CancellationError {
-            // Keep the current playlist when selection is cancelled.
+            // Keep the library unchanged when selection is cancelled.
         } catch {
             errorMessage = error.localizedDescription
         }

@@ -5,6 +5,7 @@ struct TrackList: View {
     let player: Player
     let onPlay: (Playlist.ID, Track.ID) -> Void
     let onDelete: (Playlist.ID, Track.ID) -> Void
+    let onOpenInFinder: (Playlist.ID, Track.ID) -> Void
 
     var body: some View {
         List {
@@ -15,7 +16,8 @@ struct TrackList: View {
                         index: entry.offset,
                         player: player,
                         onPlay: onPlay,
-                        onDelete: onDelete
+                        onDelete: onDelete,
+                        onOpenInFinder: onOpenInFinder
                     )
                 }
             }

@@ -4,6 +4,8 @@ import SwiftUI
 struct MacRootView: View {
     let library: Library
     let player: Player
+    private let finderFileRevealer: FinderFileRevealer
+    @State private var finderErrorMessage: String?
     @State private var selector: PlaylistSelector
     @State private var viewMode: PlaylistViewMode = .list
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
@@ -11,6 +13,7 @@ struct MacRootView: View {
     init(library: Library, fileAccessManager: FileAccessManager, player: Player) {
         self.library = library
         self.player = player
+        finderFileRevealer = FinderFileRevealer(fileAccessManager: fileAccessManager)
         _selector = State(initialValue: PlaylistSelector(library: library, fileAccessManager: fileAccessManager))
     }
 
@@ -30,6 +33,16 @@ struct MacRootView: View {
         }
         .navigationSplitViewStyle(.balanced)
         .frame(minWidth: 700, minHeight: 320)
+        .alert("Could not open in Finder", isPresented: Binding(
+            get: { finderErrorMessage != nil },
+            set: { isPresented in
+                if !isPresented { finderErrorMessage = nil }
+            }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(finderErrorMessage ?? "")
+        }
     }
 
     private var playlistContent: some View {
@@ -40,7 +53,8 @@ struct MacRootView: View {
                     playlist: library.selectedPlaylist,
                     player: player,
                     onPlay: playTrack,
-                    onDelete: deleteTrack
+                    onDelete: deleteTrack,
+                    onOpenInFinder: openInFinder
                 )
             case .albums:
                 AlbumGallery(playlist: library.selectedPlaylist, player: player)
@@ -115,6 +129,16 @@ struct MacRootView: View {
     private func deleteTrack(playlistID: Playlist.ID, trackID: Track.ID) {
         if let playlist = library.removeTrack(id: trackID, from: playlistID) {
             player.updatePlaylist(playlist)
+        }
+    }
+
+    private func openInFinder(playlistID: Playlist.ID, trackID: Track.ID) {
+        guard let track = library.playlist(id: playlistID)?.tracks.first(where: { $0.id == trackID }) else { return }
+        finderErrorMessage = nil
+        do {
+            try finderFileRevealer.reveal(track)
+        } catch {
+            finderErrorMessage = error.localizedDescription
         }
     }
 

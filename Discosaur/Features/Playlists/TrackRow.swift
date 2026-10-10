@@ -7,6 +7,7 @@ struct TrackRow: View {
     let player: Player
     let onPlay: (Playlist.ID, Track.ID) -> Void
     let onDelete: (Playlist.ID, Track.ID) -> Void
+    let onOpenInFinder: (Playlist.ID, Track.ID) -> Void
 
     private var track: Track { playlist.tracks[index] }
     private var subtitle: String {
@@ -81,6 +82,12 @@ struct TrackRow: View {
             Button("Play", systemImage: "play.fill", action: playTrack)
                 .disabled(isLoading)
                 .accessibilityIdentifier("playTrackMenuItem")
+            #if os(macOS)
+            Button("Open in Finder", systemImage: "folder") {
+                onOpenInFinder(playlist.id, track.id)
+            }
+            .accessibilityIdentifier("openInFinderMenuItem")
+            #endif
             Divider()
             Button("Delete", systemImage: "trash", role: .destructive) {
                 onDelete(playlist.id, track.id)

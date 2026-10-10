@@ -36,7 +36,12 @@ struct MacRootView: View {
         VStack(alignment: .leading, spacing: 0) {
             switch viewMode {
             case .list:
-                TrackList(playlist: library.selectedPlaylist, player: player)
+                TrackList(
+                    playlist: library.selectedPlaylist,
+                    player: player,
+                    onPlay: playTrack,
+                    onDelete: deleteTrack
+                )
             case .albums:
                 AlbumGallery(playlist: library.selectedPlaylist, player: player)
             }
@@ -92,6 +97,24 @@ struct MacRootView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(selector.errorMessage ?? "")
+        }
+    }
+
+    private func playTrack(playlistID: Playlist.ID, trackID: Track.ID) {
+        // Resolve the current contents, not the row/index captured by an open menu.
+        guard let playlist = library.playlist(id: playlistID),
+              let index = playlist.tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        player.selectTrack(in: playlist, at: index)
+        Task {
+            guard player.activePlaylist?.id == playlistID, player.currentTrack?.id == trackID else { return }
+            // Player publishes playback failures through its existing alert.
+            try? await player.play()
+        }
+    }
+
+    private func deleteTrack(playlistID: Playlist.ID, trackID: Track.ID) {
+        if let playlist = library.removeTrack(id: trackID, from: playlistID) {
+            player.updatePlaylist(playlist)
         }
     }
 

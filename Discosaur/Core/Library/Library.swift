@@ -61,4 +61,16 @@ final class Library {
               !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         updatePlaylist(Playlist(id: playlist.id, name: name, tracks: playlist.tracks))
     }
+
+    // Remove a playlist entry, never its file or a source shared by other entries.
+    @discardableResult
+    func removeTrack(id: Track.ID, from playlistID: Playlist.ID) -> Playlist? {
+        guard let playlist = playlist(id: playlistID),
+              let index = playlist.tracks.firstIndex(where: { $0.id == id }) else { return nil }
+        var tracks = playlist.tracks
+        tracks.remove(at: index)
+        let updated = Playlist(id: playlist.id, name: playlist.name, tracks: tracks)
+        updatePlaylist(updated)
+        return updated
+    }
 }

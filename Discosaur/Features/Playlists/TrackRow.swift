@@ -5,6 +5,8 @@ struct TrackRow: View {
     let playlist: Playlist
     let index: Int
     let player: Player
+    let onPlay: (Playlist.ID, Track.ID) -> Void
+    let onDelete: (Playlist.ID, Track.ID) -> Void
 
     private var track: Track { playlist.tracks[index] }
     private var subtitle: String {
@@ -12,7 +14,7 @@ struct TrackRow: View {
     }
 
     private var isCurrentTrack: Bool {
-        player.activePlaylist?.id == playlist.id && player.currentIndex == index
+        player.activePlaylist?.id == playlist.id && player.currentTrack?.id == track.id
     }
 
     @State private var isHovered = false
@@ -75,6 +77,16 @@ struct TrackRow: View {
         .listRowBackground(isCurrentTrack ? Color.accentColor.opacity(0.1) : nil)
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
+        .contextMenu {
+            Button("Play", systemImage: "play.fill", action: playTrack)
+                .disabled(isLoading)
+                .accessibilityIdentifier("playTrackMenuItem")
+            Divider()
+            Button("Delete", systemImage: "trash", role: .destructive) {
+                onDelete(playlist.id, track.id)
+            }
+            .accessibilityIdentifier("deleteTrackMenuItem")
+        }
     }
 
     private func togglePlayback() {
@@ -88,11 +100,6 @@ struct TrackRow: View {
 
     private func playTrack() {
         guard !isLoading else { return }
-        player.selectTrack(in: playlist, at: index)
-        Task {
-            guard isCurrentTrack else { return }
-            // Playback errors are exposed by Player and presented in the player bar.
-            try? await player.play()
-        }
+        onPlay(playlist.id, track.id)
     }
 }

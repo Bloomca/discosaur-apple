@@ -186,6 +186,58 @@ struct PlayerFileAccessTests {
         #expect(backend.stoppedURLs == [fileURL])
         #expect(engine.loadedFileURL == nil)
     }
+
+    @Test func deletingTheLoadedTrackClosesItsFileBeforeReleasingAccess() async throws {
+        let library = Library()
+        let backend = TestFileAccessBackend()
+        let url = URL(fileURLWithPath: "/Music/song.mp3")
+        let source = FileSource(kind: .file, bookmarkData: backend.registerBookmark(for: url))
+        library.updateSource(source)
+        let engine = FileAccessPlaybackEngine()
+        let player = Player(engine: engine, fileAccessManager: FileAccessManager(library: library, backend: backend))
+        defer { player.stop() }
+        let track = Track(url: url, location: .selectedFile(sourceID: source.id))
+        let playlist = Playlist(tracks: [track])
+        library.updatePlaylist(playlist)
+        player.selectTrack(in: playlist, at: 0)
+        try await player.play()
+        engine.onFileClose = { #expect(backend.stoppedURLs.isEmpty) }
+
+        player.updatePlaylist(try #require(library.removeTrack(id: track.id, from: playlist.id)))
+
+        #expect(engine.loadedFileURL == nil)
+        #expect(backend.stoppedURLs == [url])
+        #expect(library.sources == [source])
+        #expect(player.status == .stopped)
+    }
+
+    @Test func deletingATrackDuringLoadingPreventsPlaybackAndReleasesAccessAfterTheRead() async throws {
+        let library = Library()
+        let backend = TestFileAccessBackend()
+        let url = URL(fileURLWithPath: "/Music/song.mp3")
+        let source = FileSource(kind: .file, bookmarkData: backend.registerBookmark(for: url))
+        library.updateSource(source)
+        let engine = FileAccessPlaybackEngine()
+        engine.suspendsLoading = true
+        let player = Player(engine: engine, fileAccessManager: FileAccessManager(library: library, backend: backend))
+        defer { player.stop() }
+        let track = Track(url: url, location: .selectedFile(sourceID: source.id))
+        let playlist = Playlist(tracks: [track])
+        library.updatePlaylist(playlist)
+        player.selectTrack(in: playlist, at: 0)
+        let task = Task { try await player.play() }
+        await engine.waitUntilLoading()
+
+        player.updatePlaylist(try #require(library.removeTrack(id: track.id, from: playlist.id)))
+        #expect(backend.stoppedURLs.isEmpty)
+        engine.resumeLoading()
+        await #expect(throws: CancellationError.self) { try await task.value }
+        #expect(backend.stoppedURLs == [url])
+        #expect(engine.loadedFileURL == nil)
+        #expect(player.currentTrack == nil)
+        #expect(!player.isLoading)
+        #expect(player.errorMessage == nil)
+    }
 }
 
 @MainActor

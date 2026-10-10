@@ -231,6 +231,126 @@ struct PlayerPlaylistTests {
         #expect(engine.pauseCount == pauseCount)
     }
 
+    @Test(arguments: [false, true])
+    func deletingOtherTracksReindexesTheCurrentTrackWithoutInterruptingPlayback(paused: Bool) async throws {
+        let library = Library()
+        let engine = PlaylistTestEngine()
+        let player = Player(engine: engine)
+        defer { player.stop() }
+        let before = Track(url: URL(fileURLWithPath: "/Music/before.mp3"))
+        let current = Track(url: URL(fileURLWithPath: "/Music/current.mp3"))
+        let after = Track(url: URL(fileURLWithPath: "/Music/after.mp3"))
+        let original = Playlist(name: "Playing", tracks: [before, current, after])
+        library.updatePlaylist(original)
+        player.selectTrack(in: original, at: 1)
+        try await player.play()
+        try player.seek(to: 12)
+        if paused { player.pause() }
+        let stopCount = engine.stopCount
+        let pauseCount = engine.pauseCount
+        let browsing = library.createPlaylist()
+
+        player.updatePlaylist(try #require(library.removeTrack(id: before.id, from: original.id)))
+
+        #expect(player.currentIndex == 0)
+        #expect(player.currentTrack == current)
+        #expect(!player.canGoPrevious)
+        #expect(player.canGoNext)
+        player.updatePlaylist(try #require(library.removeTrack(id: after.id, from: original.id)))
+        #expect(player.activePlaylist?.tracks == [current])
+        #expect(!player.canGoNext)
+        #expect(player.position == 12)
+        #expect(player.status == (paused ? .paused : .playing))
+        #expect(engine.loadedURLs == [current.url])
+        #expect(engine.playCount == 1)
+        #expect(engine.stopCount == stopCount)
+        #expect(engine.pauseCount == pauseCount)
+        #expect(library.selectedPlaylist == browsing)
+    }
+
+    @Test(arguments: [false, true])
+    func deletingTheCurrentTrackStopsPlaybackWithoutChangingBrowsingSelection(paused: Bool) async throws {
+        let library = Library()
+        let engine = PlaylistTestEngine()
+        let player = Player(engine: engine)
+        defer { player.stop() }
+        let current = Track(url: URL(fileURLWithPath: "/Music/current.mp3"))
+        let other = Track(url: URL(fileURLWithPath: "/Music/other.mp3"))
+        let original = Playlist(tracks: [current, other])
+        library.updatePlaylist(original)
+        player.selectTrack(in: original, at: 0)
+        try await player.play()
+        try player.seek(to: 12)
+        if paused { player.pause() }
+        let stopCount = engine.stopCount
+        let browsing = library.createPlaylist()
+
+        player.updatePlaylist(try #require(library.removeTrack(id: current.id, from: original.id)))
+
+        #expect(player.status == .stopped)
+        #expect(player.currentTrack == nil)
+        #expect(player.activePlaylist == nil)
+        #expect(player.position == 0)
+        #expect(engine.stopCount == stopCount + 1)
+        #expect(library.playlist(id: original.id)?.tracks == [other])
+        #expect(library.selectedPlaylist == browsing)
+    }
+
+    @Test func deletingASharedTrackFromAnotherPlaylistDoesNotStopTheActiveOne() async throws {
+        let library = Library()
+        let engine = PlaylistTestEngine()
+        let player = Player(engine: engine)
+        defer { player.stop() }
+        let track = Track(url: URL(fileURLWithPath: "/Music/shared.mp3"))
+        let playing = Playlist(tracks: [track])
+        let browsing = Playlist(tracks: [track])
+        library.updatePlaylist(playing)
+        library.updatePlaylist(browsing)
+        library.selectPlaylist(id: browsing.id)
+        player.selectTrack(in: playing, at: 0)
+        try await player.play()
+        try player.seek(to: 12)
+        let stopCount = engine.stopCount
+
+        player.updatePlaylist(try #require(library.removeTrack(id: track.id, from: browsing.id)))
+
+        #expect(library.selectedPlaylist?.tracks.isEmpty == true)
+        #expect(library.playlist(id: playing.id) == playing)
+        #expect(player.activePlaylist == playing)
+        #expect(player.currentTrack == track)
+        #expect(player.position == 12)
+        #expect(player.status == .playing)
+        #expect(engine.stopCount == stopCount)
+        #expect(engine.playCount == 1)
+    }
+
+    @Test func deletingOtherTracksPreservesAlbumNavigation() async throws {
+        let library = Library()
+        let engine = PlaylistTestEngine()
+        let player = Player(engine: engine)
+        defer { player.stop() }
+        let other = albumTrack("other.mp3", title: "Other", number: 1)
+        let first = albumTrack("first.mp3", number: 1)
+        let next = albumTrack("next.mp3", number: 2)
+        let original = Playlist(tracks: [other, first, next])
+        library.updatePlaylist(original)
+        let album = try #require(original.albumGroups.first { $0.title == "Album" })
+        player.selectAlbum(in: original, id: album.id)
+        try await player.play()
+        let stopCount = engine.stopCount
+
+        player.updatePlaylist(try #require(library.removeTrack(id: other.id, from: original.id)))
+
+        #expect(player.currentTrack == first)
+        #expect(player.currentIndex == 0)
+        #expect(player.canGoNext)
+        #expect(!player.canGoPrevious)
+        #expect(engine.stopCount == stopCount)
+        try await player.next()
+        #expect(player.currentTrack == next)
+        #expect(!player.canGoNext)
+    }
+
     private func albumTrack(_ filename: String, title: String = "Album", disc: Int = 1, number: Int) -> Track {
         Track(
             url: URL(fileURLWithPath: "/Music/Disc \(disc)/\(filename)"),

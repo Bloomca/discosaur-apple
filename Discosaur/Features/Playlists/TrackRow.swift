@@ -7,6 +7,10 @@ struct TrackRow: View {
     let player: Player
 
     private var track: Track { playlist.tracks[index] }
+    private var subtitle: String {
+        [track.artist, track.album].compactMap { $0 }.joined(separator: " • ")
+    }
+
     private var isCurrentTrack: Bool {
         player.activePlaylist?.id == playlist.id && player.currentIndex == index
     }
@@ -46,8 +50,27 @@ struct TrackRow: View {
             .accessibilityLabel("\(isPlaying ? "Pause" : "Play") \(track.name)")
             .accessibilityIdentifier("playback-\(track.url.absoluteString)")
 
-            Text(track.name)
-                .textSelection(.enabled)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(track.name)
+                    .lineLimit(1)
+                    .help(track.fileName)
+
+                if !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .textSelection(.enabled)
+
+            Spacer(minLength: 8)
+
+            Text(track.duration.map(PlaybackTime.format) ?? "---")
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .fixedSize()
+                .accessibilityLabel("Duration: \(track.duration.map(PlaybackTime.format) ?? "unknown")")
         }
         .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
         .contentShape(Rectangle())

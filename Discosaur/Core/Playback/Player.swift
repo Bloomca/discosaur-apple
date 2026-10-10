@@ -38,7 +38,7 @@ final class Player {
     private var fileInfo: AudioFileInfo?
     private var volumeValue: Float = 1
 
-    var duration: TimeInterval? { fileInfo?.duration }
+    var duration: TimeInterval? { fileInfo?.duration ?? currentTrack?.duration }
 
     var volume: Float {
         get { volumeValue }

@@ -67,7 +67,7 @@ nonisolated struct TrackScanner: Sendable {
         }
 
         return tracks.sorted { left, right in
-            let order = left.name.localizedStandardCompare(right.name)
+            let order = left.fileName.localizedStandardCompare(right.fileName)
             if order == .orderedSame {
                 return left.url.path < right.url.path
             }

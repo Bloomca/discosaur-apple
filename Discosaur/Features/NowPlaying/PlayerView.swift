@@ -9,8 +9,8 @@ struct PlayerView: View {
 
     private var timeLabel: String {
         guard hasTrack else { return "--- / ---" }
-        let duration = player.duration.map(formatTime) ?? "---"
-        return "\(formatTime(player.position)) / \(duration)"
+        let duration = player.duration.map(PlaybackTime.format) ?? "---"
+        return "\(PlaybackTime.format(player.position)) / \(duration)"
     }
 
     var body: some View {
@@ -118,19 +118,5 @@ struct PlayerView: View {
             // Player publishes failures through errorMessage; cancellation needs no alert.
             try? await action()
         }
-    }
-
-    private func formatTime(_ time: TimeInterval) -> String {
-        guard time.isFinite, time >= 0, time < Double(Int.max) else { return "---" }
-
-        let totalSeconds = Int(time)
-        let hours = totalSeconds / 3600
-        let minutes = (totalSeconds % 3600) / 60
-        let seconds = String(format: "%02d", totalSeconds % 60)
-
-        if hours > 0 {
-            return "\(hours):\(String(format: "%02d", minutes)):\(seconds)"
-        }
-        return "\(minutes):\(seconds)"
     }
 }

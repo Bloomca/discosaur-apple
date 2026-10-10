@@ -9,6 +9,11 @@ final class PlaylistSelector {
     var errorMessage: String?
 
     private let scanner = TrackScanner()
+    private let metadataReader: any TrackMetadataReading
+
+    init(metadataReader: any TrackMetadataReading = AVTrackMetadataReader()) {
+        self.metadataReader = metadataReader
+    }
 
     func selectFiles(_ urls: [URL]) async {
         guard !isLoading, !Task.isCancelled else { return }
@@ -17,10 +22,21 @@ final class PlaylistSelector {
         errorMessage = nil
         defer { isLoading = false }
 
+        // Keep selected folder/file grants alive for scanning AND metadata reads.
+        // Child track URLs may not have security-scoped grants of their own.
+        let scopedURLs = urls.filter { $0.startAccessingSecurityScopedResource() }
+        defer {
+            for url in scopedURLs {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+
         do {
-            let tracks = try await scanner.tracks(from: urls)
+            let scannedTracks = try await scanner.tracks(from: urls)
+            let tracks = try await metadataReader.readTracks(scannedTracks)
+            let sortedTracks = try await Playlist.sortedTracks(tracks)
             try Task.checkCancellation()
-            playlist = Playlist(tracks: tracks)
+            playlist = Playlist(tracks: sortedTracks)
         } catch is CancellationError {
             // Keep the current playlist when selection is cancelled.
         } catch {

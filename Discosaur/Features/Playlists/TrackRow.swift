@@ -74,7 +74,6 @@ struct TrackRow: View {
         .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
         .listRowBackground(isCurrentTrack ? Color.accentColor.opacity(0.1) : nil)
         .contentShape(Rectangle())
-        .onTapGesture(count: 2, perform: playTrack)
         .onHover { isHovered = $0 }
     }
 

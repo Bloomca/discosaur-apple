@@ -9,10 +9,12 @@ import SwiftUI
 
 @main
 struct DiscosaurApp: App {
+    @State private var library = Library()
+
     var body: some Scene {
         WindowGroup {
             #if os(macOS)
-            MacRootView()
+            MacRootView(library: library)
             #else
             ContentView()
             #endif

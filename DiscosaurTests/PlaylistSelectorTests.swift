@@ -10,13 +10,16 @@ struct PlaylistSelectorTests {
         let existing = try fixture.file("Z existing.mp3")
         let second = try fixture.file("A added 2.mp3")
         let tenth = try fixture.file("A added 10.mp3")
-        let selector = PlaylistSelector(metadataReader: SelectionMetadataReader())
+        let library = Library()
+        let selector = PlaylistSelector(library: library, metadataReader: SelectionMetadataReader())
 
-        await selector.selectFiles([existing])
-        let original = try #require(selector.playlist)
+        let imported = await selector.selectFiles([existing])
+        let original = try #require(library.currentPlaylist)
+        #expect(imported == original)
         await selector.selectFiles([tenth, second])
 
-        let playlist = try #require(selector.playlist)
+        let playlist = try #require(library.currentPlaylist)
+        #expect(library.playlists == [playlist])
         #expect(playlist.id == original.id)
         #expect(playlist.tracks.map(\.url) == [existing, second, tenth])
         #expect(playlist.tracks.first == original.tracks.first)
@@ -29,14 +32,15 @@ struct PlaylistSelectorTests {
         defer { fixture.remove() }
         let existing = try fixture.file("Album/existing.mp3")
         let reader = SelectionMetadataReader()
-        let selector = PlaylistSelector(metadataReader: reader)
+        let library = Library()
+        let selector = PlaylistSelector(library: library, metadataReader: reader)
         await selector.selectFiles([existing])
-        let original = try #require(selector.playlist)
+        let original = try #require(library.currentPlaylist)
         let added = try fixture.file("Album/added.mp3")
 
         await selector.selectFiles([fixture.directory, existing])
 
-        let playlist = try #require(selector.playlist)
+        let playlist = try #require(library.currentPlaylist)
         #expect(playlist.id == original.id)
         #expect(playlist.tracks.map(\.url) == [existing, added])
         #expect(playlist.tracks.first == original.tracks.first)
@@ -49,27 +53,32 @@ struct PlaylistSelectorTests {
         defer { fixture.remove() }
         let first = try fixture.file("First/song.mp3")
         let second = try fixture.file("Second/song.mp3")
-        let selector = PlaylistSelector(metadataReader: SelectionMetadataReader())
+        let library = Library()
+        let selector = PlaylistSelector(library: library, metadataReader: SelectionMetadataReader())
 
         await selector.selectFiles([first])
         await selector.selectFiles([second])
 
-        #expect(selector.playlist?.tracks.map(\.url) == [first, second])
+        #expect(library.currentPlaylist?.tracks.map(\.url) == [first, second])
     }
 
-    @Test func duplicateAndEmptySelectionsLeavePlaylistUnchanged() async throws {
+    @Test func duplicateAndEmptySelectionsLeaveLibraryUnchanged() async throws {
         let fixture = try PlaylistSelectionFixture()
         defer { fixture.remove() }
         let existing = try fixture.file("song.mp3")
         let reader = SelectionMetadataReader()
-        let selector = PlaylistSelector(metadataReader: reader)
-        await selector.selectFiles([existing])
-        let original = try #require(selector.playlist)
+        let library = Library()
+        let selector = PlaylistSelector(library: library, metadataReader: reader)
 
-        await selector.selectFiles([existing, existing])
-        #expect(selector.playlist == original)
-        await selector.selectFiles([])
-        #expect(selector.playlist == original)
+        #expect(await selector.selectFiles([]) == nil)
+        #expect(library.playlists.isEmpty)
+        await selector.selectFiles([existing])
+        let original = try #require(library.currentPlaylist)
+
+        #expect(await selector.selectFiles([existing, existing]) == nil)
+        #expect(library.playlists == [original])
+        #expect(await selector.selectFiles([]) == nil)
+        #expect(library.playlists == [original])
         let readURLs = await reader.readURLs
         #expect(readURLs == [existing])
         #expect(!selector.isLoading)
@@ -81,13 +90,15 @@ struct PlaylistSelectorTests {
         let existing = try fixture.file("existing.mp3")
         let added = try fixture.file("added.mp3")
         let missing = fixture.directory.appendingPathComponent("missing.mp3")
-        let selector = PlaylistSelector(metadataReader: SelectionMetadataReader())
+        let library = Library()
+        let selector = PlaylistSelector(library: library, metadataReader: SelectionMetadataReader())
         await selector.selectFiles([existing])
-        let original = try #require(selector.playlist)
+        let original = try #require(library.currentPlaylist)
 
-        await selector.selectFiles([added, missing])
+        #expect(await selector.selectFiles([added, missing]) == nil)
 
-        #expect(selector.playlist == original)
+        #expect(library.playlists == [original])
+        #expect(library.currentPlaylist == original)
         #expect(selector.errorMessage != nil)
         #expect(!selector.isLoading)
     }
@@ -98,15 +109,105 @@ struct PlaylistSelectorTests {
         let existing = try fixture.file("existing.mp3")
         let added = try fixture.file("added.mp3")
         let reader = SelectionMetadataReader(cancelledURL: added)
-        let selector = PlaylistSelector(metadataReader: reader)
+        let library = Library()
+        let selector = PlaylistSelector(library: library, metadataReader: reader)
         await selector.selectFiles([existing])
-        let original = try #require(selector.playlist)
+        let original = try #require(library.currentPlaylist)
 
-        await selector.selectFiles([added])
+        #expect(await selector.selectFiles([added]) == nil)
 
-        #expect(selector.playlist == original)
+        #expect(library.playlists == [original])
+        #expect(library.currentPlaylist == original)
         #expect(selector.errorMessage == nil)
         #expect(!selector.isLoading)
+    }
+
+    @Test func importsOnlyModifyTheSelectedPlaylist() async throws {
+        let fixture = try PlaylistSelectionFixture()
+        defer { fixture.remove() }
+        let shared = try fixture.file("shared.mp3")
+        let first = Playlist(tracks: [Track(url: shared)])
+        let second = Playlist(tracks: [])
+        let library = Library()
+        library.updatePlaylist(first)
+        library.updatePlaylist(second)
+        library.selectPlaylist(id: second.id)
+        let selector = PlaylistSelector(library: library, metadataReader: SelectionMetadataReader())
+
+        let imported = await selector.selectFiles([shared])
+
+        #expect(imported?.id == second.id)
+        #expect(library.playlist(id: first.id) == first)
+        #expect(library.currentPlaylist?.id == second.id)
+        #expect(library.currentPlaylist?.tracks.map(\.url) == [shared])
+        #expect(library.playlists.count == 2)
+    }
+
+    @Test func switchingPlaylistsDuringImportDoesNotRedirectTracks() async throws {
+        let fixture = try PlaylistSelectionFixture()
+        defer { fixture.remove() }
+        let added = try fixture.file("added.mp3")
+        let first = Playlist(tracks: [])
+        let second = Playlist(tracks: [])
+        let library = Library()
+        library.updatePlaylist(first)
+        library.updatePlaylist(second)
+        let reader = SuspendedSelectionMetadataReader()
+        let selector = PlaylistSelector(library: library, metadataReader: reader)
+        let task = Task { await selector.selectFiles([added]) }
+        await reader.waitUntilReading()
+
+        library.selectPlaylist(id: second.id)
+        await reader.resume()
+        let imported = await task.value
+
+        #expect(imported?.id == first.id)
+        #expect(library.playlist(id: first.id)?.tracks.map(\.url) == [added])
+        #expect(library.currentPlaylist == second)
+        #expect(library.playlists.count == 2)
+    }
+
+    @Test func editsDuringImportArePreserved() async throws {
+        let fixture = try PlaylistSelectionFixture()
+        defer { fixture.remove() }
+        let added = try fixture.file("added.mp3")
+        let other = try fixture.file("other.mp3")
+        let original = Playlist(tracks: [])
+        let library = Library()
+        library.updatePlaylist(original)
+        let reader = SuspendedSelectionMetadataReader()
+        let selector = PlaylistSelector(library: library, metadataReader: reader)
+        let task = Task { await selector.selectFiles([added]) }
+        await reader.waitUntilReading()
+
+        library.updatePlaylist(Playlist(id: original.id, tracks: [Track(url: other)]))
+        await reader.resume()
+        let imported = await task.value
+
+        #expect(imported?.id == original.id)
+        #expect(library.currentPlaylist?.id == original.id)
+        #expect(library.currentPlaylist?.tracks.map(\.url) == [other, added])
+    }
+
+    @Test func overlappingFirstImportsShareOnePlaylistAndDoNotDuplicateTracks() async throws {
+        let fixture = try PlaylistSelectionFixture()
+        defer { fixture.remove() }
+        let shared = try fixture.file("shared.mp3")
+        let library = Library()
+        let reader = SuspendedSelectionMetadataReader()
+        let firstSelector = PlaylistSelector(library: library, metadataReader: reader)
+        let secondSelector = PlaylistSelector(library: library, metadataReader: SelectionMetadataReader())
+        let task = Task { await firstSelector.selectFiles([shared]) }
+        await reader.waitUntilReading()
+
+        let imported = await secondSelector.selectFiles([shared])
+        await reader.resume()
+        let duplicateImport = await task.value
+
+        #expect(imported != nil)
+        #expect(duplicateImport == nil)
+        #expect(library.playlists.count == 1)
+        #expect(library.currentPlaylist?.tracks.map(\.url) == [shared])
     }
 }
 
@@ -124,6 +225,30 @@ private actor SelectionMetadataReader: TrackMetadataReading {
             throw CancellationError()
         }
         return TrackMetadata()
+    }
+}
+
+private actor SuspendedSelectionMetadataReader: TrackMetadataReading {
+    private var readContinuation: CheckedContinuation<Void, Never>?
+    private var startedContinuation: CheckedContinuation<Void, Never>?
+
+    func read(at url: URL) async throws -> TrackMetadata {
+        await withCheckedContinuation { continuation in
+            readContinuation = continuation
+            startedContinuation?.resume()
+            startedContinuation = nil
+        }
+        return TrackMetadata()
+    }
+
+    func waitUntilReading() async {
+        guard readContinuation == nil else { return }
+        await withCheckedContinuation { startedContinuation = $0 }
+    }
+
+    func resume() {
+        readContinuation?.resume()
+        readContinuation = nil
     }
 }
 

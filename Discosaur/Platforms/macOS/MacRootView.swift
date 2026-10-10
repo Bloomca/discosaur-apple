@@ -2,16 +2,22 @@
 import SwiftUI
 
 struct MacRootView: View {
-    @State private var selector = PlaylistSelector()
+    let library: Library
+    @State private var selector: PlaylistSelector
     @State private var viewMode: PlaylistViewMode = .list
+
+    init(library: Library) {
+        self.library = library
+        _selector = State(initialValue: PlaylistSelector(library: library))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             switch viewMode {
             case .list:
-                TrackList(playlist: selector.playlist)
+                TrackList(playlist: library.currentPlaylist)
             case .albums:
-                AlbumGallery(playlist: selector.playlist)
+                AlbumGallery(playlist: library.currentPlaylist)
             }
 
             Divider()
@@ -48,8 +54,7 @@ struct MacRootView: View {
             ToolbarItem(placement: .primaryAction) {
                 SelectFilesButton { urls in
                     Task {
-                        await selector.selectFiles(urls)
-                        if let playlist = selector.playlist {
+                        if let playlist = await selector.selectFiles(urls) {
                             Player.shared.updatePlaylist(playlist)
                         }
                     }
@@ -78,6 +83,6 @@ private enum PlaylistViewMode: Hashable {
 }
 
 #Preview {
-    MacRootView()
+    MacRootView(library: Library())
 }
 #endif

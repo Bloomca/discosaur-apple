@@ -14,6 +14,8 @@ final class Player {
 
     private(set) var activePlaylist: Playlist?
     private(set) var currentIndex: Int?
+    private var playbackAlbumID: AlbumGroup.ID?
+    private var albumTrackIndices: [Int]?
 
     var currentTrack: Track? {
         guard let activePlaylist, let currentIndex,
@@ -21,14 +23,18 @@ final class Player {
         return activePlaylist.tracks[currentIndex]
     }
 
-    var canGoPrevious: Bool {
-        guard currentTrack != nil, let currentIndex else { return false }
-        return currentIndex > 0
-    }
+    var canGoPrevious: Bool { adjacentTrackIndex(offset: -1) != nil }
+    var canGoNext: Bool { adjacentTrackIndex(offset: 1) != nil }
 
-    var canGoNext: Bool {
-        guard currentTrack != nil, let activePlaylist, let currentIndex else { return false }
-        return currentIndex < activePlaylist.tracks.count - 1
+    private func adjacentTrackIndex(offset: Int) -> Int? {
+        guard currentTrack != nil, let activePlaylist, let currentIndex else { return nil }
+        if let albumTrackIndices {
+            guard let position = albumTrackIndices.firstIndex(of: currentIndex),
+                  albumTrackIndices.indices.contains(position + offset) else { return nil }
+            return albumTrackIndices[position + offset]
+        }
+        let index = currentIndex + offset
+        return activePlaylist.tracks.indices.contains(index) ? index : nil
     }
 
     private(set) var status: Status = .stopped
@@ -83,12 +89,29 @@ final class Player {
 
     func selectTrack(in playlist: Playlist, at index: Int) {
         guard playlist.tracks.indices.contains(index) else { return }
-        guard activePlaylist?.id != playlist.id || currentIndex != index else { return }
+        playbackAlbumID = nil
+        albumTrackIndices = nil
+        selectCurrentTrack(in: playlist, at: index)
+    }
+
+    func selectAlbum(in playlist: Playlist, id: AlbumGroup.ID) {
+        guard let album = playlist.albumGroups.first(where: { $0.id == id }),
+              let firstIndex = album.trackIndices.first else { return }
+        playbackAlbumID = album.id
+        albumTrackIndices = album.trackIndices
+        selectCurrentTrack(in: playlist, at: firstIndex)
+    }
+
+    private func selectCurrentTrack(in playlist: Playlist, at index: Int) {
+        guard playlist.tracks.indices.contains(index) else { return }
+        if activePlaylist?.id == playlist.id, currentTrack?.id == playlist.tracks[index].id {
+            activePlaylist = playlist
+            currentIndex = index
+            return
+        }
 
         resetPlayback()
-        if activePlaylist?.id != playlist.id {
-            activePlaylist = playlist
-        }
+        activePlaylist = playlist
         currentIndex = index
     }
 
@@ -103,19 +126,26 @@ final class Player {
 
         activePlaylist = playlist
         currentIndex = index
+        if let playbackAlbumID {
+            let groups = playlist.albumGroups
+            let album = groups.first { $0.id == playbackAlbumID && $0.trackIndices.contains(index) }
+                ?? groups.first { $0.trackIndices.contains(index) }
+            self.playbackAlbumID = album?.id
+            albumTrackIndices = album?.trackIndices
+        }
     }
 
     func next() async throws {
         try Task.checkCancellation()
-        guard canGoNext, let activePlaylist, let currentIndex else { return }
-        selectTrack(in: activePlaylist, at: currentIndex + 1)
+        guard let activePlaylist, let index = adjacentTrackIndex(offset: 1) else { return }
+        selectCurrentTrack(in: activePlaylist, at: index)
         try await play()
     }
 
     func previous() async throws {
         try Task.checkCancellation()
-        guard canGoPrevious, let activePlaylist, let currentIndex else { return }
-        selectTrack(in: activePlaylist, at: currentIndex - 1)
+        guard let activePlaylist, let index = adjacentTrackIndex(offset: -1) else { return }
+        selectCurrentTrack(in: activePlaylist, at: index)
         try await play()
     }
 
@@ -160,6 +190,8 @@ final class Player {
         resetPlayback()
         currentIndex = nil
         activePlaylist = nil
+        playbackAlbumID = nil
+        albumTrackIndices = nil
     }
 
     func seek(to position: TimeInterval) throws {

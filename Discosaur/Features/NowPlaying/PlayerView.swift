@@ -30,6 +30,7 @@ struct PlayerView: View {
             if let coverData = player.currentTrack?.album?.coverData {
                 AlbumCoverView(data: coverData)
                     .equatable()
+                    .accessibilityIdentifier("playerAlbumCover")
             }
 
             VStack(alignment: .leading, spacing: 4) {

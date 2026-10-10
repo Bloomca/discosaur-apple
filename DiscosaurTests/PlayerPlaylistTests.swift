@@ -74,6 +74,99 @@ struct PlayerPlaylistTests {
         #expect(player.currentIndex == 0)
         #expect(engine.stopCount == stopCount)
     }
+
+    @Test func albumPlaybackStartsAtFirstTrackAndFollowsDiscAndTrackOrder() async throws {
+        let engine = PlaylistTestEngine()
+        let player = Player(engine: engine)
+        defer { player.stop() }
+        let discTwo = albumTrack("disc2-track1.mp3", disc: 2, number: 1)
+        let trackTwo = albumTrack("disc1-track2.mp3", number: 2)
+        let other = albumTrack("other.mp3", title: "Other", number: 1)
+        let trackOne = albumTrack("disc1-track1.mp3", number: 1)
+        let playlist = Playlist(tracks: [discTwo, trackTwo, other, trackOne])
+        let album = try #require(playlist.albumGroups.first { $0.title == "Album" })
+
+        player.selectAlbum(in: playlist, id: album.id)
+        try await player.play()
+
+        #expect(player.currentTrack == trackOne)
+        #expect(player.currentIndex == 3)
+        #expect(!player.canGoPrevious)
+        #expect(player.canGoNext)
+        try await player.next()
+        #expect(player.currentTrack == trackTwo)
+        try await player.next()
+        #expect(player.currentTrack == discTwo)
+        #expect(!player.canGoNext)
+        try await player.previous()
+        #expect(player.currentTrack == trackTwo)
+        try await player.next()
+        engine.onPlaybackEnded?()
+        #expect(player.currentTrack == nil)
+        #expect(player.status == .stopped)
+        #expect(!engine.loadedURLs.contains(other.url))
+    }
+
+    @Test func selectingATrackReturnsToFullPlaylistNavigationWithoutRestartingIt() async throws {
+        let engine = PlaylistTestEngine()
+        let player = Player(engine: engine)
+        defer { player.stop() }
+        let first = albumTrack("first.mp3", number: 1)
+        let other = albumTrack("other.mp3", title: "Other", number: 1)
+        let second = albumTrack("second.mp3", number: 2)
+        let playlist = Playlist(tracks: [first, other, second])
+        let album = try #require(playlist.albumGroups.first { $0.title == "Album" })
+        player.selectAlbum(in: playlist, id: album.id)
+        try await player.play()
+        try player.seek(to: 12)
+        let stopCount = engine.stopCount
+
+        player.selectTrack(in: playlist, at: 0)
+
+        #expect(player.position == 12)
+        #expect(player.status == .playing)
+        #expect(engine.stopCount == stopCount)
+        try await player.next()
+        #expect(player.currentTrack == other)
+    }
+
+    @Test func appendingAlbumTracksUpdatesAlbumNavigationWithoutInterruptingPlayback() async throws {
+        let engine = PlaylistTestEngine()
+        let player = Player(engine: engine)
+        defer { player.stop() }
+        let other = albumTrack("other.mp3", title: "Other", number: 1)
+        let first = albumTrack("first.mp3", number: 1)
+        let original = Playlist(tracks: [other, first])
+        let album = try #require(original.albumGroups.first { $0.title == "Album" })
+        player.selectAlbum(in: original, id: album.id)
+        try await player.play()
+        try player.seek(to: 12)
+        #expect(!player.canGoNext)
+        let second = albumTrack("second.mp3", number: 2)
+        let anotherOther = albumTrack("other2.mp3", title: "Other", number: 2)
+        let updated = Playlist(id: original.id, tracks: [other, first, second, anotherOther])
+        let stopCount = engine.stopCount
+
+        player.updatePlaylist(updated)
+
+        #expect(player.currentTrack == first)
+        #expect(player.position == 12)
+        #expect(player.status == .playing)
+        #expect(engine.stopCount == stopCount)
+        #expect(player.canGoNext)
+        #expect(!player.canGoPrevious)
+        try await player.next()
+        #expect(player.currentTrack == second)
+        #expect(!player.canGoNext)
+    }
+
+    private func albumTrack(_ filename: String, title: String = "Album", disc: Int = 1, number: Int) -> Track {
+        Track(
+            url: URL(fileURLWithPath: "/Music/Disc \(disc)/\(filename)"),
+            metadata: TrackMetadata(album: title, albumArtist: "Artist", trackNumber: number, discNumber: disc),
+            album: Album(title: title, artist: "Artist", year: 2024, coverData: nil)
+        )
+    }
 }
 
 @MainActor

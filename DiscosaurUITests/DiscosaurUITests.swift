@@ -28,8 +28,29 @@ final class DiscosaurUITests: XCTestCase {
         XCTAssertGreaterThan(openFilesButton.frame.midX, toolbar.frame.midX)
         XCTAssertLessThanOrEqual(toolbar.frame.maxX - openFilesButton.frame.maxX, 32)
         XCTAssertTrue(app.staticTexts["No tracks yet"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["playlistViewControls"].exists)
+        XCTAssertTrue(app.buttons["playlistListView"].exists)
+        XCTAssertTrue(app.buttons["playlistAlbumsView"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["trackList"].exists)
         #else
         XCTAssertTrue(app.staticTexts["Hello, world!"].waitForExistence(timeout: 5))
         #endif
     }
+
+    #if os(macOS)
+    @MainActor
+    func testPlaylistViewButtonsSwitchViews() throws {
+        let app = XCUIApplication()
+        app.launch()
+        let albumsButton = app.buttons["playlistAlbumsView"]
+        XCTAssertTrue(albumsButton.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["No tracks yet"].exists)
+
+        albumsButton.click()
+        XCTAssertTrue(app.staticTexts["No albums yet"].waitForExistence(timeout: 5))
+
+        app.buttons["playlistListView"].click()
+        XCTAssertTrue(app.staticTexts["No tracks yet"].waitForExistence(timeout: 5))
+    }
+    #endif
 }

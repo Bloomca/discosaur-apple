@@ -17,7 +17,7 @@ nonisolated struct Playlist: Identifiable, Equatable, Sendable {
         return sorted
     }
 
-    private static func comesBefore(_ left: Track, _ right: Track) -> Bool {
+    static func comesBefore(_ left: Track, _ right: Track) -> Bool {
         // Numbers are only meaningful within an album, not across a library.
         if let leftTitle = left.album?.title, let rightTitle = right.album?.title {
             let albumOrder = leftTitle.localizedStandardCompare(rightTitle)

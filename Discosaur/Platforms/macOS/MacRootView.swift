@@ -24,6 +24,9 @@ struct MacRootView: View {
             .padding()
 
             TrackList(tracks: selector.playlist?.tracks ?? [])
+
+            Divider()
+            PlayerView()
         }
         .frame(minWidth: 480, minHeight: 320)
         .alert("Could not open files", isPresented: Binding(

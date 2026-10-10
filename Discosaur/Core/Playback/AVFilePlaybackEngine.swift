@@ -18,7 +18,7 @@ final class AVFilePlaybackEngine: FilePlaybackEngine {
     private var scheduleID = UUID()
     private var loadID = UUID()
 
-    #if os(iOS) || os(visionOS)
+    #if os(iOS)
     private var isAudioSessionActive = false
     #endif
 
@@ -92,7 +92,7 @@ final class AVFilePlaybackEngine: FilePlaybackEngine {
             scheduleAudio(from: frame)
         }
 
-        #if os(iOS) || os(visionOS)
+        #if os(iOS)
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playback, mode: .default)
         try session.setActive(true)
@@ -219,7 +219,7 @@ final class AVFilePlaybackEngine: FilePlaybackEngine {
     }
 
     private func deactivateAudioSession() {
-        #if os(iOS) || os(visionOS)
+        #if os(iOS)
         guard isAudioSessionActive else { return }
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         isAudioSessionActive = false

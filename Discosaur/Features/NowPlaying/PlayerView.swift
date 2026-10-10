@@ -57,37 +57,7 @@ struct PlayerView: View {
             }
             .frame(minWidth: 80, maxWidth: .infinity)
 
-            HStack(spacing: 4) {
-                transportButton("Stop", systemImage: "stop.fill", action: player.stop)
-                    .accessibilityIdentifier("playerStop")
-
-                transportButton(
-                    "Previous track",
-                    systemImage: "backward.end.fill",
-                    isEnabled: player.canGoPrevious
-                ) {
-                    performPlayback(player.previous)
-                }
-                .accessibilityIdentifier("playerPrevious")
-
-                transportButton(
-                    isPlaying ? "Pause" : "Play",
-                    systemImage: isPlaying ? "pause.fill" : "play.fill",
-                    isEnabled: !player.isLoading,
-                    action: togglePlayback
-                )
-                .accessibilityIdentifier("playerPlayPause")
-
-                transportButton(
-                    "Next track",
-                    systemImage: "forward.end.fill",
-                    isEnabled: player.canGoNext
-                ) {
-                    performPlayback(player.next)
-                }
-                .accessibilityIdentifier("playerNext")
-            }
-            .disabled(!hasTrack)
+            transportControls
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -107,6 +77,46 @@ struct PlayerView: View {
         }
     }
 
+    private var transportControls: some View {
+        HStack(spacing: 2) {
+            transportButton("Stop", systemImage: "stop.fill", action: player.stop)
+                .accessibilityIdentifier("playerStop")
+
+            transportButton(
+                "Previous track",
+                systemImage: "backward.end.fill",
+                isEnabled: player.canGoPrevious
+            ) {
+                performPlayback(player.previous)
+            }
+            .accessibilityIdentifier("playerPrevious")
+
+            transportButton(
+                isPlaying ? "Pause" : "Play",
+                systemImage: isPlaying ? "pause.fill" : "play.fill",
+                isEnabled: !player.isLoading,
+                action: togglePlayback
+            )
+            .accessibilityIdentifier("playerPlayPause")
+
+            transportButton(
+                "Next track",
+                systemImage: "forward.end.fill",
+                isEnabled: player.canGoNext
+            ) {
+                performPlayback(player.next)
+            }
+            .accessibilityIdentifier("playerNext")
+        }
+        .buttonStyle(GlassGroupButtonStyle())
+        .padding(4)
+        .glassEffect(.regular, in: Capsule())
+        .fixedSize(horizontal: true, vertical: false)
+        .disabled(!hasTrack)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Playback controls")
+    }
+
     private func transportButton(
         _ title: String,
         systemImage: String,
@@ -117,9 +127,7 @@ struct PlayerView: View {
             Image(systemName: systemImage)
                 .frame(width: 24, height: 24)
                 .padding(5)
-                .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
         .disabled(!isEnabled)
         .help(title)
         .accessibilityLabel(title)

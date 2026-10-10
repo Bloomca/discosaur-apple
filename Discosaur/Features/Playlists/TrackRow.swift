@@ -38,11 +38,11 @@ struct TrackRow: View {
         HStack(spacing: 8) {
             Button(action: togglePlayback) {
                 Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                    .frame(width: 24, height: 24)
-                    .padding(5)
-                    .contentShape(Rectangle())
+                    .frame(width: 20, height: 20)
+                    .padding(1)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.glass)
+            .buttonBorderShape(.circle)
             .focused($isPlaybackFocused)
             .disabled(isLoading)
             .opacity(showsPlaybackControl ? 1 : 0)

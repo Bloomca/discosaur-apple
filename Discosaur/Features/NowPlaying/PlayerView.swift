@@ -7,6 +7,18 @@ struct PlayerView: View {
     private var hasTrack: Bool { player.currentTrack != nil }
     private var isPlaying: Bool { player.status == .playing }
 
+    private var trackDetails: String? {
+        guard let track = player.currentTrack else { return nil }
+        var details = track.album ?? ""
+        if let artist = track.artist ?? track.albumArtist {
+            details = details.isEmpty ? artist : "\(details) by \(artist)"
+        }
+        if let year = track.year {
+            details += details.isEmpty ? "(\(year))" : " (\(year))"
+        }
+        return details.isEmpty ? nil : details
+    }
+
     private var timeLabel: String {
         guard hasTrack else { return "--- / ---" }
         let duration = player.duration.map(PlaybackTime.format) ?? "---"
@@ -23,16 +35,27 @@ struct PlayerView: View {
                     .help(player.currentTrack?.name ?? "No track selected")
                     .accessibilityIdentifier("playerTrackTitle")
 
+                if let trackDetails {
+                    Text(trackDetails)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .help(trackDetails)
+                        .accessibilityIdentifier("playerTrackDetails")
+                }
+            }
+            .frame(maxWidth: 220, alignment: .leading)
+
+            VStack(spacing: 4) {
                 Text(timeLabel)
                     .font(.caption)
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("playerTime")
+                
+                SeekSlider(player: player)
             }
-            .frame(maxWidth: 220, alignment: .leading)
-
-            SeekSlider(player: player)
-                .frame(minWidth: 80, maxWidth: .infinity)
+            .frame(minWidth: 80, maxWidth: .infinity)
 
             HStack(spacing: 4) {
                 transportButton("Stop", systemImage: "stop.fill", action: player.stop)

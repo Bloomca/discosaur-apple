@@ -6,6 +6,7 @@ nonisolated struct Track: Identifiable, Equatable, Sendable {
     let artist: String?
     let album: String?
     let albumArtist: String?
+    let year: Int?
     let trackNumber: Int?
     let discNumber: Int?
     let duration: TimeInterval?
@@ -20,6 +21,7 @@ nonisolated struct Track: Identifiable, Equatable, Sendable {
         artist = metadata.artist
         album = metadata.album
         albumArtist = metadata.albumArtist
+        year = metadata.year
         trackNumber = metadata.trackNumber
         discNumber = metadata.discNumber
         duration = metadata.duration

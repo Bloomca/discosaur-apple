@@ -5,6 +5,7 @@ nonisolated struct TrackMetadata: Equatable, Sendable {
     let artist: String?
     let album: String?
     let albumArtist: String?
+    let year: Int?
     let trackNumber: Int?
     let discNumber: Int?
     let duration: TimeInterval?
@@ -14,6 +15,7 @@ nonisolated struct TrackMetadata: Equatable, Sendable {
         artist: String? = nil,
         album: String? = nil,
         albumArtist: String? = nil,
+        year: Int? = nil,
         trackNumber: Int? = nil,
         discNumber: Int? = nil,
         duration: TimeInterval? = nil
@@ -22,6 +24,7 @@ nonisolated struct TrackMetadata: Equatable, Sendable {
         self.artist = artist.flatMap(Self.normalizedText)
         self.album = album.flatMap(Self.normalizedText)
         self.albumArtist = albumArtist.flatMap(Self.normalizedText)
+        self.year = Self.validatedYear(year)
         self.trackNumber = Self.validatedNumber(trackNumber)
         self.discNumber = Self.validatedNumber(discNumber)
         self.duration = Self.validatedDuration(duration)
@@ -30,6 +33,22 @@ nonisolated struct TrackMetadata: Equatable, Sendable {
     static func validatedDuration(_ duration: TimeInterval?) -> TimeInterval? {
         guard let duration, duration.isFinite, duration > 0 else { return nil }
         return duration
+    }
+
+    static func validatedYear(_ year: Int?) -> Int? {
+        guard let year, (1...9999).contains(year) else { return nil }
+        return year
+    }
+
+    static func releaseYear(from text: String?) -> Int? {
+        // Music tags commonly contain either a year or an ISO-style release date.
+        guard let text, let trimmed = normalizedText(text) else { return nil }
+        let prefix = trimmed.prefix(4)
+        guard prefix.count == 4, prefix.allSatisfy(\.isNumber) else { return nil }
+        let remainder = trimmed.dropFirst(4)
+        guard remainder.isEmpty || remainder.first == "-" || remainder.first == "/"
+            || remainder.first == " " || remainder.first == "T" else { return nil }
+        return validatedYear(Int(prefix))
     }
 
     static func sequenceNumber(from text: String?) -> Int? {

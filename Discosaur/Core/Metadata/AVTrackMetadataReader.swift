@@ -29,10 +29,12 @@ nonisolated struct AVTrackMetadataReader: TrackMetadataReading {
             in: items
         )
 
+        let year = try await releaseYear(in: items + commonItems)
+
         try Task.checkCancellation()
         // Core Audio may expose tags that AVFoundation's metadata omits.
         let needsFileTags = title == nil || artist == nil || album == nil
-            || albumArtist == nil || trackNumber == nil || discNumber == nil
+            || albumArtist == nil || year == nil || trackNumber == nil || discNumber == nil
         let fileTags = needsFileTags ? readFileTags(at: url) : TrackMetadata()
 
         let assetDuration = (try? await asset.load(.duration))?.seconds
@@ -48,6 +50,7 @@ nonisolated struct AVTrackMetadataReader: TrackMetadataReading {
             artist: artist ?? fileTags.artist,
             album: album ?? fileTags.album,
             albumArtist: albumArtist ?? fileTags.albumArtist,
+            year: year ?? fileTags.year,
             trackNumber: trackNumber ?? fileTags.trackNumber,
             discNumber: discNumber ?? fileTags.discNumber,
             duration: duration
@@ -102,6 +105,36 @@ nonisolated struct AVTrackMetadataReader: TrackMetadataReading {
         return nil
     }
 
+    private func releaseYear(in items: [AVMetadataItem]) async throws -> Int? {
+        let identifiers: [AVMetadataIdentifier] = [
+            .iTunesMetadataReleaseDate, .id3MetadataReleaseTime,
+            .id3MetadataRecordingTime, .id3MetadataYear, .quickTimeMetadataYear,
+            .id3MetadataOriginalReleaseTime, .id3MetadataOriginalReleaseYear,
+            .commonIdentifierCreationDate,
+        ]
+        for identifier in identifiers {
+            for item in AVMetadataItem.metadataItems(from: items, filteredByIdentifier: identifier) {
+                try Task.checkCancellation()
+                if let value = try? await item.load(.stringValue),
+                   let year = TrackMetadata.releaseYear(from: value) {
+                    return year
+                }
+                if let value = try? await item.load(.numberValue),
+                   let year = TrackMetadata.validatedYear(Int(exactly: value.doubleValue)) {
+                    return year
+                }
+                if let date = try? await item.load(.dateValue) {
+                    var calendar = Calendar(identifier: .gregorian)
+                    calendar.timeZone = .gmt
+                    if let year = TrackMetadata.validatedYear(calendar.component(.year, from: date)) {
+                        return year
+                    }
+                }
+            }
+        }
+        return nil
+    }
+
     private func readFileTags(at url: URL) -> TrackMetadata {
         var fileID: AudioFileID?
         guard AudioFileOpenURL(url as CFURL, .readPermission, 0, &fileID) == noErr,
@@ -125,6 +158,8 @@ nonisolated struct AVTrackMetadataReader: TrackMetadataReading {
             artist: tag([kAFInfoDictionary_Artist, "ARTIST"], in: tags),
             album: tag([kAFInfoDictionary_Album, "ALBUM"], in: tags),
             albumArtist: tag(["album artist", "ALBUMARTIST", "ALBUM_ARTIST"], in: tags),
+            year: [kAFInfoDictionary_Year, "YEAR", kAFInfoDictionary_RecordedDate, "DATE"]
+                .lazy.compactMap { TrackMetadata.releaseYear(from: tag([$0], in: tags)) }.first,
             trackNumber: TrackMetadata.sequenceNumber(
                 from: tag([kAFInfoDictionary_TrackNumber, "TRACKNUMBER"], in: tags)
             ),

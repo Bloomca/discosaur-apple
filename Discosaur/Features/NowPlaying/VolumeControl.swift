@@ -27,9 +27,8 @@ struct VolumeControl: View {
                 .frame(width: 24, height: 24)
                 .padding(5)
         }
-        .buttonStyle(GlassGroupButtonStyle())
-        .padding(4)
-        .glassEffect(.regular, in: Circle())
+        .buttonStyle(.glass)
+        .buttonBorderShape(.circle)
         .fixedSize(horizontal: true, vertical: false)
         .help("Volume")
         .accessibilityLabel("Volume")

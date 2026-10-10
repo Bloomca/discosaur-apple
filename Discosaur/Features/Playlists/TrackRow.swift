@@ -62,7 +62,6 @@ struct TrackRow: View {
                         .lineLimit(1)
                 }
             }
-            .textSelection(.enabled)
 
             Spacer(minLength: 8)
 
@@ -75,6 +74,7 @@ struct TrackRow: View {
         .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
         .listRowBackground(isCurrentTrack ? Color.accentColor.opacity(0.1) : nil)
         .contentShape(Rectangle())
+        .onTapGesture(count: 2, perform: playTrack)
         .onHover { isHovered = $0 }
     }
 
@@ -84,6 +84,11 @@ struct TrackRow: View {
             return
         }
 
+        playTrack()
+    }
+
+    private func playTrack() {
+        guard !isLoading else { return }
         player.selectTrack(in: playlist, at: index)
         Task {
             guard isCurrentTrack else { return }

@@ -28,7 +28,7 @@ struct TrackRow: View {
 
     private var showsPlaybackControl: Bool {
         #if os(macOS)
-        isHovered || isPlaying || isLoading || isPlaybackFocused
+        isHovered || isLoading || isPlaybackFocused
         #else
         true
         #endif

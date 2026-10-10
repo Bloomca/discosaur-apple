@@ -92,6 +92,19 @@ final class Player {
         currentIndex = index
     }
 
+    // Refresh the queue without resetting the currently loaded track or playback.
+    func updatePlaylist(_ playlist: Playlist) {
+        guard activePlaylist?.id == playlist.id else { return }
+        guard let currentTrack,
+              let index = playlist.tracks.firstIndex(where: { $0.id == currentTrack.id }) else {
+            stop()
+            return
+        }
+
+        activePlaylist = playlist
+        currentIndex = index
+    }
+
     func next() async throws {
         try Task.checkCancellation()
         guard canGoNext, let activePlaylist, let currentIndex else { return }

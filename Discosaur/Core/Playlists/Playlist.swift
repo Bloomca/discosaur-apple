@@ -1,8 +1,13 @@
 import Foundation
 
 nonisolated struct Playlist: Identifiable, Equatable, Sendable {
-    let id = UUID()
+    let id: UUID
     let tracks: [Track]
+
+    init(id: UUID = UUID(), tracks: [Track]) {
+        self.id = id
+        self.tracks = tracks
+    }
 
     @concurrent
     static func sortedTracks(_ tracks: [Track]) async throws -> [Track] {

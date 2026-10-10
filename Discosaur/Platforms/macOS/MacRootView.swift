@@ -25,6 +25,9 @@ struct MacRootView: View {
                 SelectFilesButton { urls in
                     Task {
                         await selector.selectFiles(urls)
+                        if let playlist = selector.playlist {
+                            Player.shared.updatePlaylist(playlist)
+                        }
                     }
                 }
                 .disabled(selector.isLoading)

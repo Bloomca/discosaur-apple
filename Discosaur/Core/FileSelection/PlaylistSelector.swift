@@ -34,11 +34,17 @@ final class PlaylistSelector {
 
         do {
             let scannedTracks = try await scanner.tracks(from: urls)
-            let files = try await metadataReader.readMetadata(for: scannedTracks)
+            let existingTracks = playlist?.tracks ?? []
+            let existingURLs = Set(existingTracks.map(\.url))
+            let newTracks = scannedTracks.filter { !existingURLs.contains($0.url) }
+            guard !newTracks.isEmpty else { return }
+
+            let files = try await metadataReader.readMetadata(for: newTracks)
             let tracks = try await albumResolver.resolve(files, selectedURLs: urls)
             let sortedTracks = try await Playlist.sortedTracks(tracks)
             try Task.checkCancellation()
-            playlist = Playlist(tracks: sortedTracks)
+            // Keep existing order and identity, appending only the new sorted batch.
+            playlist = Playlist(id: playlist?.id ?? UUID(), tracks: existingTracks + sortedTracks)
         } catch is CancellationError {
             // Keep the current playlist when selection is cancelled.
         } catch {

@@ -97,6 +97,7 @@ struct PlayerView: View {
                 isEnabled: !player.isLoading,
                 action: togglePlayback
             )
+            .keyboardShortcut(.space, modifiers: [])
             .accessibilityIdentifier("playerPlayPause")
 
             transportButton(

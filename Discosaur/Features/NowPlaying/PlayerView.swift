@@ -33,34 +33,37 @@ struct PlayerView: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(player.currentTrack?.name ?? "No track selected")
-                    .font(.headline)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .help(player.currentTrack?.name ?? "No track selected")
-                    .accessibilityIdentifier("playerTrackTitle")
+                HStack(alignment: .center, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(player.currentTrack?.name ?? "No track selected")
+                            .font(.headline)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .help(player.currentTrack?.name ?? "No track selected")
+                            .accessibilityIdentifier("playerTrackTitle")
 
-                if let trackDetails {
-                    Text(trackDetails)
-                        .font(.caption)
+                        if let trackDetails {
+                            Text(trackDetails)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .help(trackDetails)
+                                .accessibilityIdentifier("playerTrackDetails")
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    Text(timeLabel)
+                        .font(.callout)
+                        .monospacedDigit()
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .help(trackDetails)
-                        .accessibilityIdentifier("playerTrackDetails")
+                        .fixedSize(horizontal: true, vertical: false)
+                        .accessibilityIdentifier("playerTime")
                 }
-            }
-            .frame(maxWidth: 220, alignment: .leading)
 
-            VStack(spacing: 4) {
-                Text(timeLabel)
-                    .font(.caption)
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-                    .accessibilityIdentifier("playerTime")
-                
                 SeekSlider(player: player)
             }
-            .frame(minWidth: 80, maxWidth: .infinity)
+            .frame(minWidth: 80, maxWidth: .infinity, alignment: .leading)
 
             transportControls
         }

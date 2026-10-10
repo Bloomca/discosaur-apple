@@ -47,12 +47,19 @@ final class Player {
         return true
     }
 
+    // Muting silences playback without discarding the chosen volume.
+    var isMuted = false {
+        didSet {
+            engine.volume = isMuted ? 0 : volumeValue
+        }
+    }
+
     var volume: Float {
         get { volumeValue }
         set {
             guard newValue.isFinite else { return }
             volumeValue = min(1, max(0, newValue))
-            engine.volume = volumeValue
+            engine.volume = isMuted ? 0 : volumeValue
         }
     }
 
@@ -62,8 +69,13 @@ final class Player {
     @ObservationIgnored private var requestID = UUID()
     @ObservationIgnored private var progressTask: Task<Void, Never>?
 
-    private init() {
-        engine = AVFilePlaybackEngine()
+    private convenience init() {
+        self.init(engine: AVFilePlaybackEngine())
+    }
+
+    init(engine: any FilePlaybackEngine) {
+        self.engine = engine
+        engine.volume = volumeValue
         engine.onPlaybackEnded = { [weak self] in
             self?.handlePlaybackEnded()
         }

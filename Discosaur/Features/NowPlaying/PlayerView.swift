@@ -65,7 +65,10 @@ struct PlayerView: View {
             }
             .frame(minWidth: 80, maxWidth: .infinity, alignment: .leading)
 
-            transportControls
+            HStack(spacing: 8) {
+                transportControls
+                VolumeControl(player: player)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)

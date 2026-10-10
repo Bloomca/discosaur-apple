@@ -27,6 +27,11 @@ struct PlayerView: View {
 
     var body: some View {
         HStack(spacing: 16) {
+            if let coverData = player.currentTrack?.album?.coverData {
+                AlbumCoverView(data: coverData)
+                    .equatable()
+            }
+
             VStack(alignment: .leading, spacing: 4) {
                 Text(player.currentTrack?.name ?? "No track selected")
                     .font(.headline)

@@ -73,6 +73,7 @@ struct TrackRow: View {
                 .accessibilityLabel("Duration: \(track.duration.map(PlaybackTime.format) ?? "unknown")")
         }
         .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
+        .listRowBackground(isCurrentTrack ? Color.accentColor.opacity(0.1) : nil)
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
     }

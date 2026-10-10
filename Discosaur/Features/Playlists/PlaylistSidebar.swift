@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PlaylistSidebar: View {
     let library: Library
+    let onRename: (Playlist.ID, String) -> Void
 
     private var selection: Binding<Playlist.ID?> {
         Binding(
@@ -17,8 +18,12 @@ struct PlaylistSidebar: View {
             List(selection: selection) {
                 Section("Playlists") {
                     ForEach(library.playlists) { playlist in
-                        Label(playlist.name, systemImage: "music.note.list")
-                            .tag(playlist.id)
+                        PlaylistSidebarItem(
+                            playlist: playlist,
+                            selectedPlaylistID: library.selectedPlaylistID,
+                            onRename: onRename
+                        )
+                        .tag(playlist.id)
                     }
                 }
             }

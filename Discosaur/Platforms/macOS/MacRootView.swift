@@ -17,7 +17,7 @@ struct MacRootView: View {
     var body: some View {
         // NavigationSplitView supplies the standard sidebar toggle in the toolbar.
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            PlaylistSidebar(library: library)
+            PlaylistSidebar(library: library, onRename: renamePlaylist)
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
         } detail: {
             if let playlist = library.selectedPlaylist {
@@ -99,14 +99,16 @@ struct MacRootView: View {
         // Capture the edited playlist's identity, not a selection that can change.
         Binding(
             get: { library.playlist(id: id)?.name ?? "Discosaur" },
-            set: { name in
-                library.renamePlaylist(id: id, to: name)
-                if let playlist = library.playlist(id: id) {
-                    // Refresh metadata only when this is the playing playlist.
-                    player.updatePlaylist(playlist)
-                }
-            }
+            set: { name in renamePlaylist(id: id, to: name) }
         )
+    }
+
+    private func renamePlaylist(id: Playlist.ID, to name: String) {
+        library.renamePlaylist(id: id, to: name)
+        if let playlist = library.playlist(id: id) {
+            // Refresh metadata only when this is the playing playlist.
+            player.updatePlaylist(playlist)
+        }
     }
 }
 

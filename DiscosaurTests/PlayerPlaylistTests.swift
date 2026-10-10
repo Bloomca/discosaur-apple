@@ -200,7 +200,8 @@ struct PlayerPlaylistTests {
         #expect(engine.loadedURLs == [first.url, next.url])
     }
 
-    @Test func renamingThePlayingPlaylistRefreshesItsNameWithoutRestartingPlayback() async throws {
+    @Test(arguments: [false, true])
+    func renamingThePlayingPlaylistRefreshesItsNameWithoutRestartingPlayback(paused: Bool) async throws {
         let library = Library()
         let engine = PlaylistTestEngine()
         let player = Player(engine: engine)
@@ -212,7 +213,9 @@ struct PlayerPlaylistTests {
         try await player.play()
         try player.seek(to: 12)
         let browsing = library.createPlaylist()
+        if paused { player.pause() }
         let stopCount = engine.stopCount
+        let pauseCount = engine.pauseCount
 
         library.renamePlaylist(id: playing.id, to: "Renamed")
         player.updatePlaylist(try #require(library.playlist(id: playing.id)))
@@ -220,11 +223,12 @@ struct PlayerPlaylistTests {
         #expect(player.activePlaylist?.name == "Renamed")
         #expect(player.currentTrack == track)
         #expect(player.position == 12)
-        #expect(player.status == .playing)
+        #expect(player.status == (paused ? .paused : .playing))
         #expect(library.selectedPlaylist == browsing)
         #expect(engine.loadedURLs == [track.url])
         #expect(engine.playCount == 1)
         #expect(engine.stopCount == stopCount)
+        #expect(engine.pauseCount == pauseCount)
     }
 
     private func albumTrack(_ filename: String, title: String = "Album", disc: Int = 1, number: Int) -> Track {

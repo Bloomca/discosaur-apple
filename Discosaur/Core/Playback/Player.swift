@@ -115,23 +115,60 @@ final class Player {
         currentIndex = index
     }
 
-    // Refresh the queue without resetting the currently loaded track or playback.
+    // Preserve the loaded track when possible; advance if a playing track was removed.
     func updatePlaylist(_ playlist: Playlist) {
         guard activePlaylist?.id == playlist.id else { return }
-        guard let currentTrack,
-              let index = playlist.tracks.firstIndex(where: { $0.id == currentTrack.id }) else {
+        guard let currentTrack else {
             stop()
+            return
+        }
+        guard let index = playlist.tracks.firstIndex(where: { $0.id == currentTrack.id }) else {
+            advanceAfterRemoval(in: playlist)
             return
         }
 
         activePlaylist = playlist
         currentIndex = index
-        if let playbackAlbumID {
-            let groups = playlist.albumGroups
-            let album = groups.first { $0.id == playbackAlbumID && $0.trackIndices.contains(index) }
-                ?? groups.first { $0.trackIndices.contains(index) }
-            self.playbackAlbumID = album?.id
-            albumTrackIndices = album?.trackIndices
+        refreshAlbumNavigation(in: playlist, at: index)
+    }
+
+    private func refreshAlbumNavigation(in playlist: Playlist, at index: Int) {
+        guard let playbackAlbumID else { return }
+        let groups = playlist.albumGroups
+        let album = groups.first { $0.id == playbackAlbumID && $0.trackIndices.contains(index) }
+            ?? groups.first { $0.trackIndices.contains(index) }
+        self.playbackAlbumID = album?.id
+        albumTrackIndices = album?.trackIndices
+    }
+
+    private func advanceAfterRemoval(in playlist: Playlist) {
+        guard status == .playing, let activePlaylist, let currentIndex else {
+            stop()
+            return
+        }
+        // Use the old queue order, which may be album order rather than list order.
+        let orderedIndices = albumTrackIndices ?? Array(activePlaylist.tracks.indices)
+        let remainingIDs = Set(playlist.tracks.map(\.id))
+        guard let position = orderedIndices.firstIndex(of: currentIndex),
+              let nextOldIndex = orderedIndices.dropFirst(position + 1).first(where: {
+                  remainingIDs.contains(activePlaylist.tracks[$0].id)
+              }),
+              let nextIndex = playlist.tracks.firstIndex(where: {
+                  $0.id == activePlaylist.tracks[nextOldIndex].id
+              }) else {
+            stop()
+            return
+        }
+
+        // Close the deleted file and release its lease before loading the successor.
+        selectCurrentTrack(in: playlist, at: nextIndex)
+        refreshAlbumNavigation(in: playlist, at: nextIndex)
+        let id = requestID
+        Task { @MainActor [weak self] in
+            guard let self, self.requestID == id,
+                  self.status == .stopped, !self.isLoading else { return }
+            // Manual selection/Stop invalidates this request; play() publishes errors.
+            try? await self.play()
         }
     }
 

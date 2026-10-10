@@ -269,7 +269,7 @@ struct PlayerPlaylistTests {
     }
 
     @Test(arguments: [false, true])
-    func deletingTheCurrentTrackStopsPlaybackWithoutChangingBrowsingSelection(paused: Bool) async throws {
+    func deletingTheCurrentTrackAdvancesOnlyIfPlayingWithoutChangingBrowsingSelection(paused: Bool) async throws {
         let library = Library()
         let engine = PlaylistTestEngine()
         let player = Player(engine: engine)
@@ -287,9 +287,19 @@ struct PlayerPlaylistTests {
 
         player.updatePlaylist(try #require(library.removeTrack(id: current.id, from: original.id)))
 
-        #expect(player.status == .stopped)
-        #expect(player.currentTrack == nil)
-        #expect(player.activePlaylist == nil)
+        if paused {
+            #expect(player.status == .stopped)
+            #expect(player.currentTrack == nil)
+            #expect(player.activePlaylist == nil)
+            #expect(engine.loadedURLs == [current.url])
+        } else {
+            try await waitUntil { engine.playCount == 2 }
+            #expect(player.status == .playing)
+            #expect(player.currentTrack == other)
+            #expect(player.activePlaylist?.id == original.id)
+            #expect(player.currentIndex == 0)
+            #expect(engine.loadedURLs == [current.url, other.url])
+        }
         #expect(player.position == 0)
         #expect(engine.stopCount == stopCount + 1)
         #expect(library.playlist(id: original.id)?.tracks == [other])
@@ -351,6 +361,168 @@ struct PlayerPlaylistTests {
         #expect(!player.canGoNext)
     }
 
+    @Test func deletingAMiddleTrackPlaysItsSuccessorRatherThanAPreviousTrack() async throws {
+        let engine = PlaylistTestEngine()
+        let player = Player(engine: engine)
+        defer { player.stop() }
+        let before = Track(url: URL(fileURLWithPath: "/Music/before.mp3"))
+        let current = Track(url: URL(fileURLWithPath: "/Music/current.mp3"))
+        let next = Track(url: URL(fileURLWithPath: "/Music/next.mp3"))
+        let original = Playlist(tracks: [before, current, next])
+        player.selectTrack(in: original, at: 1)
+        try await player.play()
+
+        player.updatePlaylist(Playlist(id: original.id, tracks: [before, next]))
+        try await waitUntil { engine.playCount == 2 }
+
+        #expect(player.currentTrack == next)
+        #expect(player.currentIndex == 1)
+        #expect(player.status == .playing)
+        #expect(engine.loadedURLs == [current.url, next.url])
+    }
+
+    @Test func deletingTheLastPlayingTrackStopsRatherThanWrappingAround() async throws {
+        let engine = PlaylistTestEngine()
+        let player = Player(engine: engine)
+        defer { player.stop() }
+        let before = Track(url: URL(fileURLWithPath: "/Music/before.mp3"))
+        let current = Track(url: URL(fileURLWithPath: "/Music/current.mp3"))
+        let original = Playlist(tracks: [before, current])
+        player.selectTrack(in: original, at: 1)
+        try await player.play()
+
+        player.updatePlaylist(Playlist(id: original.id, tracks: [before]))
+
+        #expect(player.status == .stopped)
+        #expect(player.currentTrack == nil)
+        #expect(player.activePlaylist == nil)
+        #expect(engine.loadedURLs == [current.url])
+        #expect(engine.playCount == 1)
+    }
+
+    @Test func removalSkipsMissingSuccessorsAndQueuedPlaybackUsesTheLatestQueue() async throws {
+        let engine = PlaylistTestEngine()
+        let player = Player(engine: engine)
+        defer { player.stop() }
+        let current = Track(url: URL(fileURLWithPath: "/Music/current.mp3"))
+        let alsoRemoved = Track(url: URL(fileURLWithPath: "/Music/also-removed.mp3"))
+        let next = Track(url: URL(fileURLWithPath: "/Music/next.mp3"))
+        let added = Track(url: URL(fileURLWithPath: "/Music/added.mp3"))
+        let original = Playlist(tracks: [current, alsoRemoved, next])
+        player.selectTrack(in: original, at: 0)
+        try await player.play()
+
+        player.updatePlaylist(Playlist(id: original.id, tracks: [next]))
+        player.updatePlaylist(Playlist(id: original.id, name: "Latest queue", tracks: [added, next]))
+        try await waitUntil { engine.playCount == 2 }
+
+        #expect(player.currentTrack == next)
+        #expect(player.currentIndex == 1)
+        #expect(player.activePlaylist?.name == "Latest queue")
+        #expect(engine.loadedURLs == [current.url, next.url])
+    }
+
+    @Test func deletionAdvanceFollowsAlbumOrderAndKeepsAlbumNavigation() async throws {
+        let engine = PlaylistTestEngine()
+        let player = Player(engine: engine)
+        defer { player.stop() }
+        let third = albumTrack("third.mp3", number: 3)
+        let other = albumTrack("other.mp3", title: "Other", number: 1)
+        let current = albumTrack("current.mp3", number: 1)
+        let next = albumTrack("next.mp3", number: 2)
+        let original = Playlist(tracks: [third, other, current, next])
+        let album = try #require(original.albumGroups.first { $0.title == "Album" })
+        player.selectAlbum(in: original, id: album.id)
+        try await player.play()
+
+        player.updatePlaylist(Playlist(id: original.id, tracks: [third, other, next]))
+        try await waitUntil { engine.playCount == 2 }
+
+        #expect(player.currentTrack == next)
+        #expect(player.currentIndex == 2)
+        #expect(!player.canGoPrevious)
+        #expect(player.canGoNext)
+        try await player.next()
+        #expect(player.currentTrack == third)
+        #expect(!player.canGoNext)
+        #expect(engine.loadedURLs == [current.url, next.url, third.url])
+    }
+
+    @Test func deletingTheLastAlbumTrackDoesNotStartAnotherAlbum() async throws {
+        let engine = PlaylistTestEngine()
+        let player = Player(engine: engine)
+        defer { player.stop() }
+        let current = albumTrack("current.mp3", number: 1)
+        let other = albumTrack("other.mp3", title: "Other", number: 1)
+        let original = Playlist(tracks: [current, other])
+        let album = try #require(original.albumGroups.first { $0.title == "Album" })
+        player.selectAlbum(in: original, id: album.id)
+        try await player.play()
+
+        player.updatePlaylist(Playlist(id: original.id, tracks: [other]))
+
+        #expect(player.status == .stopped)
+        #expect(player.currentTrack == nil)
+        #expect(engine.loadedURLs == [current.url])
+        #expect(engine.playCount == 1)
+    }
+
+    @Test(arguments: [false, true])
+    func manualSelectionOrStopInvalidatesQueuedDeletionAdvance(stop: Bool) async throws {
+        let engine = PlaylistTestEngine()
+        let player = Player(engine: engine)
+        defer { player.stop() }
+        let current = Track(url: URL(fileURLWithPath: "/Music/current.mp3"))
+        let next = Track(url: URL(fileURLWithPath: "/Music/next.mp3"))
+        let selected = Track(url: URL(fileURLWithPath: "/Music/selected.mp3"))
+        let original = Playlist(tracks: [current, next, selected])
+        player.selectTrack(in: original, at: 0)
+        try await player.play()
+        let updated = Playlist(id: original.id, tracks: [next, selected])
+
+        player.updatePlaylist(updated)
+        if stop {
+            player.stop()
+        } else {
+            player.selectTrack(in: updated, at: 1)
+        }
+        try await Task.sleep(for: .milliseconds(5))
+
+        #expect(player.status == .stopped)
+        #expect(player.currentTrack == (stop ? nil : selected))
+        #expect(engine.loadedURLs == [current.url])
+        #expect(engine.playCount == 1)
+    }
+
+    @Test func failedDeletionAdvancePublishesThePlaybackError() async throws {
+        let engine = PlaylistTestEngine()
+        let player = Player(engine: engine)
+        defer { player.stop() }
+        let current = Track(url: URL(fileURLWithPath: "/Music/current.mp3"))
+        let next = Track(url: URL(fileURLWithPath: "/Music/next.mp3"))
+        let original = Playlist(tracks: [current, next])
+        player.selectTrack(in: original, at: 0)
+        try await player.play()
+        engine.failsLoading = true
+
+        player.updatePlaylist(Playlist(id: original.id, tracks: [next]))
+        try await waitUntil { player.errorMessage != nil }
+
+        #expect(player.currentTrack == next)
+        #expect(player.status == .stopped)
+        #expect(!player.isLoading)
+        #expect(engine.loadedURLs == [current.url, next.url])
+        #expect(engine.playCount == 1)
+    }
+
+    private func waitUntil(_ condition: () -> Bool) async throws {
+        for _ in 0..<1_000 {
+            if condition() { return }
+            try await Task.sleep(for: .milliseconds(1))
+        }
+        #expect(condition(), "Timed out waiting for automatic playback")
+    }
+
     private func albumTrack(_ filename: String, title: String = "Album", disc: Int = 1, number: Int) -> Track {
         Track(
             url: URL(fileURLWithPath: "/Music/Disc \(disc)/\(filename)"),
@@ -362,6 +534,8 @@ struct PlayerPlaylistTests {
 
 @MainActor
 private final class PlaylistTestEngine: FilePlaybackEngine {
+    enum Failure: Error { case load }
+    var failsLoading = false
     var position: TimeInterval = 0
     var volume: Float = 1
     var onPlaybackEnded: (@MainActor () -> Void)?
@@ -372,6 +546,7 @@ private final class PlaylistTestEngine: FilePlaybackEngine {
 
     func loadFile(at url: URL) async throws -> AudioFileInfo {
         loadedURLs.append(url)
+        if failsLoading { throw Failure.load }
         return AudioFileInfo(duration: 60)
     }
 

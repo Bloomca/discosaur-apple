@@ -238,6 +238,48 @@ struct PlayerFileAccessTests {
         #expect(!player.isLoading)
         #expect(player.errorMessage == nil)
     }
+
+    @Test func deletionAdvanceClosesTheOldFileAndScopeBeforeOpeningTheNextSource() async throws {
+        let library = Library()
+        let backend = TestFileAccessBackend()
+        let firstURL = URL(fileURLWithPath: "/Music/first.mp3")
+        let nextURL = URL(fileURLWithPath: "/Music/next.mp3")
+        let firstSource = FileSource(kind: .file, bookmarkData: backend.registerBookmark(for: firstURL))
+        let nextSource = FileSource(kind: .file, bookmarkData: backend.registerBookmark(for: nextURL))
+        library.updateSource(firstSource)
+        library.updateSource(nextSource)
+        let engine = FileAccessPlaybackEngine()
+        let player = Player(engine: engine, fileAccessManager: FileAccessManager(library: library, backend: backend))
+        defer { player.stop() }
+        let first = Track(url: firstURL, location: .selectedFile(sourceID: firstSource.id))
+        let next = Track(url: nextURL, location: .selectedFile(sourceID: nextSource.id))
+        let playlist = Playlist(tracks: [first, next])
+        library.updatePlaylist(playlist)
+        player.selectTrack(in: playlist, at: 0)
+        try await player.play()
+        var closedFirstFile = false
+        engine.onFileClose = { [weak engine] in
+            if engine?.loadedFileURL == firstURL {
+                #expect(backend.stoppedURLs.isEmpty)
+                #expect(backend.startedURLs == [firstURL])
+                closedFirstFile = true
+            }
+        }
+
+        player.updatePlaylist(try #require(library.removeTrack(id: first.id, from: playlist.id)))
+        #expect(closedFirstFile)
+        #expect(backend.stoppedURLs == [firstURL])
+        for _ in 0..<1_000 {
+            if player.status == .playing { break }
+            try await Task.sleep(for: .milliseconds(1))
+        }
+
+        #expect(player.status == .playing)
+        #expect(player.currentTrack == next)
+        #expect(engine.loadedFileURL == nextURL)
+        #expect(backend.startedURLs == [firstURL, nextURL])
+        #expect(backend.stoppedURLs == [firstURL])
+    }
 }
 
 @MainActor

@@ -8,9 +8,18 @@ struct SelectFilesButton: View {
     @State private var isPresentingPicker = false
 
     var body: some View {
-        Button("Open files", action: selectFiles)
-            .disabled(isPresentingPicker)
-            .accessibilityIdentifier("selectFilesButton")
+        Button(action: selectFiles) {
+            Label("Open files/folder", systemImage: "plus")
+                .labelStyle(.iconOnly)
+                .font(.system(size: 16, weight: .medium))
+                .frame(width: 32, height: 32)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.automatic)
+        .disabled(isPresentingPicker)
+        .help("Open files/folder")
+        .accessibilityLabel("Open files/folder")
+        .accessibilityIdentifier("selectFilesButton")
     }
 
     private func selectFiles() {

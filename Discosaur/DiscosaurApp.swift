@@ -17,5 +17,9 @@ struct DiscosaurApp: App {
             ContentView()
             #endif
         }
+        #if os(macOS)
+        .windowStyle(.hiddenTitleBar)
+        .windowToolbarStyle(.unifiedCompact(showsTitle: false))
+        #endif
     }
 }

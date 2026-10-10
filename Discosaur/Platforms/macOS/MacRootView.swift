@@ -6,29 +6,30 @@ struct MacRootView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                SelectFilesButton { urls in
-                    Task {
-                        await selector.selectFiles(urls)
-                    }
-                }
-                .disabled(selector.isLoading)
-
-                if selector.isLoading {
-                    ProgressView()
-                        .controlSize(.small)
-                }
-
-                Spacer()
-            }
-            .padding()
-
             TrackList(playlist: selector.playlist)
 
             Divider()
             PlayerView()
         }
         .frame(minWidth: 480, minHeight: 320)
+        .toolbar {
+            ToolbarSpacer(.flexible, placement: .primaryAction)
+
+            ToolbarItemGroup(placement: .primaryAction) {
+                if selector.isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel("Opening files/folders")
+                }
+
+                SelectFilesButton { urls in
+                    Task {
+                        await selector.selectFiles(urls)
+                    }
+                }
+                .disabled(selector.isLoading)
+            }
+        }
         .alert("Could not open files", isPresented: Binding(
             get: { selector.errorMessage != nil },
             set: { isPresented in

@@ -19,7 +19,14 @@ final class DiscosaurUITests: XCTestCase {
         app.launch()
 
         #if os(macOS)
-        XCTAssertTrue(app.buttons["selectFilesButton"].waitForExistence(timeout: 5))
+        let toolbar = app.toolbars.firstMatch
+        let openFilesButton = toolbar.buttons["selectFilesButton"]
+        XCTAssertTrue(openFilesButton.waitForExistence(timeout: 5))
+        XCTAssertEqual(openFilesButton.label, "Open files/folder")
+        XCTAssertGreaterThanOrEqual(openFilesButton.frame.width, 32)
+        XCTAssertGreaterThanOrEqual(openFilesButton.frame.height, 32)
+        XCTAssertGreaterThan(openFilesButton.frame.midX, toolbar.frame.midX)
+        XCTAssertLessThanOrEqual(toolbar.frame.maxX - openFilesButton.frame.maxX, 32)
         XCTAssertTrue(app.staticTexts["No tracks yet"].exists)
         #else
         XCTAssertTrue(app.staticTexts["Hello, world!"].waitForExistence(timeout: 5))

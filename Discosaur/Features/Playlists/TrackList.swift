@@ -1,12 +1,17 @@
+import Foundation
 import SwiftUI
 
 struct TrackList: View {
     let tracks: [Track]
 
+    private let player = Player.shared
+    @State private var playbackError: String?
+
     var body: some View {
         List(tracks) { track in
-            Text(track.name)
-                .textSelection(.enabled)
+            TrackRow(track: track, player: player) { error in
+                playbackError = error.localizedDescription
+            }
         }
         .overlay {
             if tracks.isEmpty {
@@ -15,5 +20,17 @@ struct TrackList: View {
             }
         }
         .accessibilityIdentifier("trackList")
+        .alert("Could not play track", isPresented: Binding(
+            get: { playbackError != nil },
+            set: { isPresented in
+                if !isPresented {
+                    playbackError = nil
+                }
+            }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(playbackError ?? "")
+        }
     }
 }

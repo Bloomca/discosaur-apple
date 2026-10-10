@@ -29,8 +29,10 @@ struct PlayerView: View {
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("playerTime")
             }
+            .frame(maxWidth: 220, alignment: .leading)
 
-            Spacer(minLength: 0)
+            SeekSlider(player: player)
+                .frame(minWidth: 80, maxWidth: .infinity)
 
             HStack(spacing: 4) {
                 transportButton("Stop", systemImage: "stop.fill", action: player.stop)

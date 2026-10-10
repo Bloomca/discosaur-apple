@@ -40,6 +40,13 @@ final class Player {
 
     var duration: TimeInterval? { fileInfo?.duration ?? currentTrack?.duration }
 
+    var canSeek: Bool {
+        guard status != .stopped, !isLoading,
+              let currentTrack, loadedURL == currentTrack.url,
+              let duration = fileInfo?.duration, duration.isFinite, duration > 0 else { return false }
+        return true
+    }
+
     var volume: Float {
         get { volumeValue }
         set {
@@ -131,11 +138,14 @@ final class Player {
     }
 
     func seek(to position: TimeInterval) throws {
+        guard canSeek else { return }
+        errorMessage = nil
         do {
             try engine.seek(to: position)
             self.position = engine.position
         } catch {
             pause()
+            errorMessage = error.localizedDescription
             throw error
         }
     }

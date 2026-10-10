@@ -8,26 +8,27 @@ nonisolated protocol TrackMetadataReading: Sendable {
 
 extension TrackMetadataReading {
     @concurrent
-    func readTracks(_ tracks: [Track]) async throws -> [Track] {
+    func readMetadata(for tracks: [Track]) async throws -> [(url: URL, metadata: TrackMetadata)] {
         try Task.checkCancellation()
-        return try await withThrowingTaskGroup(of: (Int, Track).self) { group in
-            var result = tracks
+        return try await withThrowingTaskGroup(of: (Int, TrackMetadata).self) { group in
+            var result = tracks.map { (url: $0.url, metadata: TrackMetadata()) }
             var remaining = tracks.enumerated().makeIterator()
 
             // Limit simultaneous file reads, while preserving the scanned order.
+            // Keep raw tags until albums are resolved, then build the runtime tracks.
             for _ in 0..<8 {
                 guard let (index, track) = remaining.next() else { break }
                 group.addTask {
-                    (index, try await readTrack(track))
+                    (index, try await readMetadata(at: track.url))
                 }
             }
 
-            for try await (index, track) in group {
+            for try await (index, metadata) in group {
                 try Task.checkCancellation()
-                result[index] = track
+                result[index].metadata = metadata
                 if let (nextIndex, nextTrack) = remaining.next() {
                     group.addTask {
-                        (nextIndex, try await readTrack(nextTrack))
+                        (nextIndex, try await readMetadata(at: nextTrack.url))
                     }
                 }
             }
@@ -37,11 +38,11 @@ extension TrackMetadataReading {
         }
     }
 
-    private func readTrack(_ track: Track) async throws -> Track {
+    private func readMetadata(at url: URL) async throws -> TrackMetadata {
         try Task.checkCancellation()
         let metadata: TrackMetadata
         do {
-            metadata = try await read(at: track.url)
+            metadata = try await read(at: url)
         } catch is CancellationError {
             throw CancellationError()
         } catch {
@@ -49,6 +50,6 @@ extension TrackMetadataReading {
             metadata = TrackMetadata()
         }
         try Task.checkCancellation()
-        return Track(url: track.url, metadata: metadata)
+        return metadata
     }
 }

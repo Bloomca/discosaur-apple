@@ -14,20 +14,20 @@ nonisolated struct Playlist: Identifiable, Equatable, Sendable {
 
     private static func comesBefore(_ left: Track, _ right: Track) -> Bool {
         // Numbers are only meaningful within an album, not across a library.
-        if let leftAlbum = left.album, let rightAlbum = right.album {
-            let albumOrder = leftAlbum.localizedStandardCompare(rightAlbum)
+        if let leftTitle = left.album?.title, let rightTitle = right.album?.title {
+            let albumOrder = leftTitle.localizedStandardCompare(rightTitle)
             if albumOrder != .orderedSame {
                 return albumOrder == .orderedAscending
             }
 
             // Use album artist, not track artist, so compilations stay together.
-            let artistOrder = (left.albumArtist ?? "").localizedStandardCompare(right.albumArtist ?? "")
+            let artistOrder = (left.album?.artist ?? "").localizedStandardCompare(right.album?.artist ?? "")
             if artistOrder != .orderedSame {
                 return artistOrder == .orderedAscending
             }
-        } else if left.album != nil {
+        } else if left.album?.title != nil {
             return true
-        } else if right.album != nil {
+        } else if right.album?.title != nil {
             return false
         } else {
             // Without album tags, keep separate source folders together.

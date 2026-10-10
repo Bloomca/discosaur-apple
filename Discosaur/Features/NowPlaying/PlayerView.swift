@@ -9,11 +9,11 @@ struct PlayerView: View {
 
     private var trackDetails: String? {
         guard let track = player.currentTrack else { return nil }
-        var details = track.album ?? ""
-        if let artist = track.artist ?? track.albumArtist {
+        var details = track.album?.title ?? ""
+        if let artist = track.artist ?? track.album?.artist {
             details = details.isEmpty ? artist : "\(details) by \(artist)"
         }
-        if let year = track.year {
+        if let year = track.album?.year {
             details += details.isEmpty ? "(\(year))" : " (\(year))"
         }
         return details.isEmpty ? nil : details

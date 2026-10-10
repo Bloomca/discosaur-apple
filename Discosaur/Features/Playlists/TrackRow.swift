@@ -8,7 +8,7 @@ struct TrackRow: View {
 
     private var track: Track { playlist.tracks[index] }
     private var subtitle: String {
-        [track.artist, track.album].compactMap { $0 }.joined(separator: " • ")
+        [track.artist, track.album?.title].compactMap { $0 }.joined(separator: " • ")
     }
 
     private var isCurrentTrack: Bool {

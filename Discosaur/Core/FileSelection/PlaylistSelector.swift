@@ -9,6 +9,7 @@ final class PlaylistSelector {
     var errorMessage: String?
 
     private let scanner = TrackScanner()
+    private let albumResolver = AlbumResolver()
     private let metadataReader: any TrackMetadataReading
 
     init(metadataReader: any TrackMetadataReading = AVTrackMetadataReader()) {
@@ -22,7 +23,7 @@ final class PlaylistSelector {
         errorMessage = nil
         defer { isLoading = false }
 
-        // Keep selected folder/file grants alive for scanning AND metadata reads.
+        // Keep selected folder/file grants alive for scanning, metadata, and cover reads.
         // Child track URLs may not have security-scoped grants of their own.
         let scopedURLs = urls.filter { $0.startAccessingSecurityScopedResource() }
         defer {
@@ -33,7 +34,8 @@ final class PlaylistSelector {
 
         do {
             let scannedTracks = try await scanner.tracks(from: urls)
-            let tracks = try await metadataReader.readTracks(scannedTracks)
+            let files = try await metadataReader.readMetadata(for: scannedTracks)
+            let tracks = try await albumResolver.resolve(files, selectedURLs: urls)
             let sortedTracks = try await Playlist.sortedTracks(tracks)
             try Task.checkCancellation()
             playlist = Playlist(tracks: sortedTracks)

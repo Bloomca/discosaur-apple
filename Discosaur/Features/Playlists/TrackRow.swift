@@ -7,7 +7,7 @@ struct TrackRow: View {
     let player: Player
     let onPlay: (Playlist.ID, Track.ID) -> Void
     let onDelete: (Playlist.ID, Track.ID) -> Void
-    let onOpenInFinder: (Playlist.ID, Track.ID) -> Void
+    var onOpenInFinder: ((Playlist.ID, Track.ID) -> Void)? = nil
 
     private var track: Track { playlist.tracks[index] }
     private var subtitle: String {
@@ -38,7 +38,26 @@ struct TrackRow: View {
     }
 
     var body: some View {
+        #if os(iOS)
+        Button(action: togglePlayback) {
+            rowContent
+        }
+        .buttonStyle(.plain)
+        .disabled(isLoading)
+        .accessibilityIdentifier("playback-\(track.url.absoluteString)")
+        .swipeActions {
+            Button("Remove", systemImage: "trash", role: .destructive) {
+                onDelete(playlist.id, track.id)
+            }
+        }
+        #else
+        rowContent
+        #endif
+    }
+
+    private var rowContent: some View {
         HStack(spacing: 8) {
+            #if os(macOS)
             Button(action: togglePlayback) {
                 Image(systemName: isPlaying ? "pause.fill" : "play.fill")
                     .frame(width: 20, height: 20)
@@ -52,6 +71,17 @@ struct TrackRow: View {
             .help(isPlaying ? "Pause" : "Play")
             .accessibilityLabel("\(isPlaying ? "Pause" : "Play") \(track.name)")
             .accessibilityIdentifier("playback-\(track.url.absoluteString)")
+            #else
+            if isLoading {
+                ProgressView()
+                    .frame(width: 24)
+            } else if isPlaying {
+                Image(systemName: "waveform")
+                    .foregroundStyle(.tint)
+                    .frame(width: 24)
+                    .accessibilityLabel("Playing")
+            }
+            #endif
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(track.name)
@@ -74,7 +104,7 @@ struct TrackRow: View {
                 .fixedSize()
                 .accessibilityLabel("Duration: \(track.duration.map(PlaybackTime.format) ?? "unknown")")
         }
-        .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: minimumRowHeight, alignment: .leading)
         .listRowBackground(isCurrentTrack ? Color.accentColor.opacity(0.1) : nil)
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
@@ -83,10 +113,12 @@ struct TrackRow: View {
                 .disabled(isLoading)
                 .accessibilityIdentifier("playTrackMenuItem")
             #if os(macOS)
-            Button("Open in Finder", systemImage: "folder") {
-                onOpenInFinder(playlist.id, track.id)
+            if let onOpenInFinder {
+                Button("Open in Finder", systemImage: "folder") {
+                    onOpenInFinder(playlist.id, track.id)
+                }
+                .accessibilityIdentifier("openInFinderMenuItem")
             }
-            .accessibilityIdentifier("openInFinderMenuItem")
             #endif
             Divider()
             Button("Delete", systemImage: "trash", role: .destructive) {
@@ -94,6 +126,14 @@ struct TrackRow: View {
             }
             .accessibilityIdentifier("deleteTrackMenuItem")
         }
+    }
+
+    private var minimumRowHeight: CGFloat {
+        #if os(iOS)
+        44
+        #else
+        34
+        #endif
     }
 
     private func togglePlayback() {

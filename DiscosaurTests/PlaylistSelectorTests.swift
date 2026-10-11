@@ -145,6 +145,44 @@ struct PlaylistSelectorTests {
         #expect(library.playlists.count == 2)
     }
 
+    @Test func capturedPickerDestinationIsUsedAfterBrowsingAnotherPlaylist() async throws {
+        let fixture = try PlaylistSelectionFixture()
+        defer { fixture.remove() }
+        let added = try fixture.file("added.mp3")
+        let library = Library()
+        let destination = library.createPlaylist()
+        let browsing = library.createPlaylist()
+        let selector = PlaylistSelector(library: library, metadataReader: SelectionMetadataReader())
+
+        let imported = await selector.selectFiles([added], into: destination.id)
+
+        #expect(imported?.id == destination.id)
+        #expect(library.playlist(id: destination.id)?.tracks.map(\.url) == [added])
+        #expect(library.selectedPlaylist == browsing)
+        #expect(library.playlists.count == 2)
+    }
+
+    @Test func deletingDestinationWhilePickerIsOpenDoesNotRedirectTheImport() async throws {
+        let fixture = try PlaylistSelectionFixture()
+        defer { fixture.remove() }
+        let added = try fixture.file("added.mp3")
+        let library = Library()
+        let destination = library.createPlaylist()
+        let remaining = library.createPlaylist()
+        library.removePlaylist(id: destination.id)
+        let reader = SelectionMetadataReader()
+        let selector = PlaylistSelector(library: library, metadataReader: reader)
+
+        let imported = await selector.selectFiles([added], into: destination.id)
+
+        #expect(imported == nil)
+        #expect(library.playlists == [remaining])
+        #expect(library.sources.isEmpty)
+        #expect(await reader.readURLs.isEmpty)
+        #expect(!selector.isLoading)
+        #expect(selector.errorMessage == nil)
+    }
+
     @Test func switchingPlaylistsDuringImportDoesNotRedirectTracks() async throws {
         let fixture = try PlaylistSelectionFixture()
         defer { fixture.remove() }

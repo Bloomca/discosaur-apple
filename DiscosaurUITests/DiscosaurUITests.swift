@@ -33,7 +33,10 @@ final class DiscosaurUITests: XCTestCase {
         XCTAssertTrue(app.buttons["playlistAlbumsView"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["trackList"].exists)
         #else
-        XCTAssertTrue(app.staticTexts["Hello, world!"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Add your music"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["addMusicButton"].exists)
+        XCTAssertTrue(app.buttons["libraryActionsButton"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["miniPlayerView"].exists)
         #endif
     }
 

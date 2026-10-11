@@ -5,7 +5,7 @@ struct TrackList: View {
     let player: Player
     let onPlay: (Playlist.ID, Track.ID) -> Void
     let onDelete: (Playlist.ID, Track.ID) -> Void
-    let onOpenInFinder: (Playlist.ID, Track.ID) -> Void
+    var onOpenInFinder: ((Playlist.ID, Track.ID) -> Void)? = nil
 
     var body: some View {
         List {

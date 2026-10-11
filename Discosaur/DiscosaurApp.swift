@@ -100,8 +100,13 @@ struct DiscosaurApp: App {
                 artworkCache: artworkCache,
                 player: player
             )
-            #else
-            ContentView()
+            #elseif os(iOS)
+            IOSRootView(
+                library: library,
+                fileAccessManager: fileAccessManager,
+                artworkCache: artworkCache,
+                player: player
+            )
             #endif
         }
     }

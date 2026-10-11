@@ -25,10 +25,16 @@ final class PlaylistSelector {
 
     @discardableResult
     func selectFiles(_ urls: [URL]) async -> Playlist? {
-        guard !isLoading, !Task.isCancelled else { return nil }
+        await selectFiles(urls, into: library.selectedPlaylistID)
+    }
 
-        // Keep importing into the original playlist if the selection changes mid-import.
-        let playlistID = library.selectedPlaylistID
+    // Pickers can outlive a browsing selection change. Callers may capture the
+    // destination when opening the picker, before scanning begins.
+    @discardableResult
+    func selectFiles(_ urls: [URL], into playlistID: Playlist.ID?) async -> Playlist? {
+        guard !isLoading, !Task.isCancelled else { return nil }
+        if let playlistID, library.playlist(id: playlistID) == nil { return nil }
+
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }

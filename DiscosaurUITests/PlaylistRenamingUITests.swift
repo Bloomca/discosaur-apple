@@ -107,6 +107,28 @@ final class PlaylistRenamingUITests: XCTestCase {
     }
 
     @MainActor
+    func testBrowsingSelectionSurvivesRelaunchInsteadOfSelectingTheFirstPlaylist() {
+        let app = makeTestApplication()
+        app.launch()
+        createPlaylist(in: app)
+        let firstEditor = beginRename("New playlist", in: app)
+        replaceName(with: "First playlist", in: firstEditor)
+        firstEditor.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: [])
+        createPlaylist(in: app)
+        let secondEditor = beginRename("New playlist", in: app)
+        replaceName(with: "Second playlist", in: secondEditor)
+        secondEditor.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: [])
+        app.typeKey("q", modifierFlags: .command)
+        XCTAssertTrue(app.wait(for: .notRunning, timeout: 5))
+
+        app.launch()
+
+        XCTAssertTrue(sidebar(in: app).staticTexts["Second playlist"].waitForExistence(timeout: 5))
+        XCTAssertTrue(sidebar(in: app).staticTexts["First playlist"].exists)
+        XCTAssertEqual(app.windows.firstMatch.title, "Second playlist")
+    }
+
+    @MainActor
     private func sidebar(in app: XCUIApplication) -> XCUIElement {
         app.descendants(matching: .any)["playlistSidebar"].firstMatch
     }

@@ -25,18 +25,22 @@ struct DiscosaurApp: App {
     init() {
         let library = Library()
         let fileAccessManager = FileAccessManager(library: library)
+        let player = Player(engine: AVFilePlaybackEngine(), fileAccessManager: fileAccessManager)
+        let statePersistence = LibraryStatePersistence(
+            library: library,
+            player: player,
+            storage: LibraryStateStorage(defaults: LibraryStorageLocation.userDefaults)
+        )
         let persistence = LibraryPersistence(
             library: library,
-            storage: Storage(fileURL: LibraryStorageLocation.current)
+            storage: Storage(fileURL: LibraryStorageLocation.current),
+            statePersistence: statePersistence
         )
         _persistence = State(initialValue: persistence)
         _library = State(initialValue: library)
         _fileAccessManager = State(initialValue: fileAccessManager)
         _artworkCache = State(initialValue: AlbumArtworkCache(fileAccessManager: fileAccessManager))
-        _player = State(initialValue: Player(
-            engine: AVFilePlaybackEngine(),
-            fileAccessManager: fileAccessManager
-        ))
+        _player = State(initialValue: player)
         #if os(macOS)
         lifecycle.persistence = persistence
         #endif

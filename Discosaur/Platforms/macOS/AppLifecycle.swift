@@ -6,7 +6,9 @@ final class AppLifecycle: NSObject, NSApplicationDelegate {
     var persistence: LibraryPersistence?
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard let persistence, persistence.hasUnsavedChanges else { return .terminateNow }
+        guard let persistence else { return .terminateNow }
+        persistence.flushState()
+        guard persistence.hasUnsavedChanges else { return .terminateNow }
         Task {
             await persistence.flush()
             if persistence.hasUnsavedChanges {

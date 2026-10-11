@@ -13,15 +13,22 @@ final class LibraryPersistence {
     @ObservationIgnored private let library: Library
     @ObservationIgnored private let storage: any LibraryStoring
     @ObservationIgnored private let autosaveDelay: Duration
+    @ObservationIgnored private let statePersistence: LibraryStatePersistence?
     @ObservationIgnored private var debounceTask: Task<Void, Never>?
     @ObservationIgnored private var writeTask: Task<Void, Never>?
     @ObservationIgnored private var revision: UInt64 = 0
     @ObservationIgnored private var savedRevision: UInt64 = 0
 
-    init(library: Library, storage: any LibraryStoring, autosaveDelay: Duration = .milliseconds(250)) {
+    init(
+        library: Library,
+        storage: any LibraryStoring,
+        autosaveDelay: Duration = .milliseconds(250),
+        statePersistence: LibraryStatePersistence? = nil
+    ) {
         self.library = library
         self.storage = storage
         self.autosaveDelay = autosaveDelay
+        self.statePersistence = statePersistence
         library.onChange = { [weak self] in self?.scheduleSave() }
     }
 
@@ -38,6 +45,7 @@ final class LibraryPersistence {
             if let snapshot = try await storage.load() {
                 library.restore(snapshot)
             }
+            statePersistence?.restoreAndStart()
             status = .ready
         } catch {
             // Never autosave an empty/partial library after a failed load.
@@ -56,10 +64,18 @@ final class LibraryPersistence {
     // even if a previous save is still in flight or debounce has not elapsed.
     func flush() async {
         guard status == .ready else { return }
+        flushState()
         debounceTask?.cancel()
         debounceTask = nil
         startWriting()
         await writeTask?.value
+        flushState()
+    }
+
+    // State-only edits need flushing at quit even when JSON has no pending writes.
+    func flushState() {
+        guard status == .ready else { return }
+        statePersistence?.flush()
     }
 
     private func scheduleSave() {

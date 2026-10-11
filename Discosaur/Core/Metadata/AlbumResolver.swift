@@ -1,23 +1,18 @@
 import Foundation
-import ImageIO
 
 nonisolated struct AlbumResolver: Sendable {
     @concurrent
     func resolve(
         _ files: [(url: URL, metadata: TrackMetadata, location: FileLocation?)],
-        selectedURLs: [URL]
+        selectedFolders: [(url: URL, sourceID: UUID)]
     ) async throws -> [Track] {
         try Task.checkCancellation()
 
         // Only explicitly selected folders authorize searching for external artwork.
-        var selectedFolders: [URL] = []
-        for url in selectedURLs {
-            try Task.checkCancellation()
-            guard url.isFileURL,
-                  let resources = try? url.resourceValues(forKeys: [.isDirectoryKey]),
-                  resources.isDirectory == true else { continue }
-            selectedFolders.append(url.standardizedFileURL.resolvingSymlinksInPath())
-        }
+        // Prefer the most specific grant, just as track locations do.
+        let selectedFolders = selectedFolders.filter { $0.url.isFileURL }.map {
+            (url: $0.url.standardizedFileURL.resolvingSymlinksInPath(), sourceID: $0.sourceID)
+        }.sorted { $0.url.pathComponents.count > $1.url.pathComponents.count }
 
         var albumsByIndex = [Album?](repeating: nil, count: files.count)
         var indicesByAlbum: [SourceAlbum: [Int]] = [:]
@@ -30,7 +25,7 @@ nonisolated struct AlbumResolver: Sendable {
                         title: nil,
                         artist: file.metadata.albumArtist,
                         year: file.metadata.year,
-                        coverData: nil
+                        coverLocation: nil
                     )
                 }
                 continue
@@ -43,13 +38,13 @@ nonisolated struct AlbumResolver: Sendable {
         }
 
         var checkedFolders: Set<URL> = []
-        var coversByFolder: [URL: Data] = [:]
+        var coversByFolder: [URL: FileLocation] = [:]
         for (source, indices) in indicesByAlbum {
             try Task.checkCancellation()
             // Cache both successful and missing covers across albums in a folder.
             if checkedFolders.insert(source.folder).inserted,
-               let data = try readCover(in: source.folder, selectedFolders: selectedFolders) {
-                coversByFolder[source.folder] = data
+               let location = try coverLocation(in: source.folder, selectedFolders: selectedFolders) {
+                coversByFolder[source.folder] = location
             }
 
             for group in artistGroups(for: indices, in: files) {
@@ -61,7 +56,7 @@ nonisolated struct AlbumResolver: Sendable {
                         title: files[firstIndex].metadata.album,
                         artist: group.artist,
                         year: yearGroup.year,
-                        coverData: coversByFolder[source.folder]
+                        coverLocation: coversByFolder[source.folder]
                     )
                     for index in yearGroup.indices {
                         try Task.checkCancellation()
@@ -129,9 +124,13 @@ nonisolated struct AlbumResolver: Sendable {
             .map { (year: $0.key, indices: $0.value) }
     }
 
-    private func readCover(in folder: URL, selectedFolders: [URL]) throws -> Data? {
-        // In particular, file-only imports must not enumerate their parent folders.
-        guard isWithinSelectedFolders(folder, selectedFolders: selectedFolders) else { return nil }
+    private func coverLocation(
+        in folder: URL,
+        selectedFolders: [(url: URL, sourceID: UUID)]
+    ) throws -> FileLocation? {
+        // File-only imports must not enumerate their parent folders.
+        let components = folder.standardizedFileURL.resolvingSymlinksInPath().pathComponents
+        guard selectedFolders.contains(where: { components.starts(with: $0.url.pathComponents) }) else { return nil }
         try Task.checkCancellation()
         guard let files = try? FileManager().contentsOfDirectory(
             at: folder,
@@ -139,32 +138,22 @@ nonisolated struct AlbumResolver: Sendable {
             options: [.skipsHiddenFiles]
         ) else { return nil }
 
-        // Prefer the first readable image, with deterministic case-insensitive matching.
+        // Discovery stores only a reference. Reading/validating image bytes is lazy.
         for name in ["cover.jpg", "folder.jpg"] {
             let candidates = files.filter { $0.lastPathComponent.lowercased() == name }
                 .sorted { $0.path < $1.path }
             for url in candidates {
                 try Task.checkCancellation()
-                guard isWithinSelectedFolders(url, selectedFolders: selectedFolders),
-                      let resources = try? url.resourceValues(forKeys: [.isRegularFileKey]),
-                      resources.isRegularFile == true,
-                      let data = try? Data(contentsOf: url) else { continue }
-                try Task.checkCancellation()
-                // Inspect the image without decoding its pixels or storing UI image types.
-                guard let image = CGImageSourceCreateWithData(data as CFData, nil),
-                      CGImageSourceGetCount(image) > 0,
-                      CGImageSourceGetStatus(image) == .statusComplete else { continue }
-                return data
+                for source in selectedFolders {
+                    // Check containment before inspecting a symlink's target.
+                    guard let path = FileLocation.relativePath(of: url, inside: source.url),
+                          let resources = try? url.resolvingSymlinksInPath().resourceValues(forKeys: [.isRegularFileKey]),
+                          resources.isRegularFile == true else { continue }
+                    return .insideFolder(sourceID: source.sourceID, relativePath: path)
+                }
             }
         }
         return nil
-    }
-
-    private func isWithinSelectedFolders(_ url: URL, selectedFolders: [URL]) -> Bool {
-        guard !selectedFolders.isEmpty else { return false }
-        // Resolve symlinks so artwork cannot escape the selected directory trees.
-        let components = url.standardizedFileURL.resolvingSymlinksInPath().pathComponents
-        return selectedFolders.contains { components.starts(with: $0.pathComponents) }
     }
 
     private func normalized(_ text: String) -> String {

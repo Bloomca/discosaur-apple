@@ -55,7 +55,10 @@ final class PlaylistSelector {
             guard !newTracks.isEmpty else { return nil }
 
             let files = try await metadataReader.readMetadata(for: newTracks)
-            let tracks = try await albumResolver.resolve(files, selectedURLs: selectedURLs)
+            let selectedFolders = prepared.filter { $0.source.kind == .folder }.map {
+                (url: $0.access.resourceURL, sourceID: $0.source.id)
+            }
+            let tracks = try await albumResolver.resolve(files, selectedFolders: selectedFolders)
             let sortedTracks = try await Playlist.sortedTracks(tracks)
             try Task.checkCancellation()
             // Re-read the destination after suspension to preserve other imports/edits.
@@ -66,9 +69,11 @@ final class PlaylistSelector {
             let addedTracks = sortedTracks.filter { !currentURLs.contains($0.url) }
             guard !addedTracks.isEmpty else { return nil }
 
-            // Commit only sources used by successfully imported tracks. Failed, cancelled,
-            // duplicate, and empty selections leave no orphaned source records.
-            let usedSourceIDs = Set(addedTracks.compactMap { $0.location?.sourceID })
+            // Commit only sources used by successfully imported tracks or their artwork.
+            // Failed, cancelled, duplicate, and empty selections leave no orphaned sources.
+            let usedSourceIDs = Set(addedTracks.flatMap { track in
+                [track.location?.sourceID, track.album?.coverLocation?.sourceID].compactMap { $0 }
+            })
             for selection in prepared where usedSourceIDs.contains(selection.source.id) {
                 library.updateSource(selection.source)
             }

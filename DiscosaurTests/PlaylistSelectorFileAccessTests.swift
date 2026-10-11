@@ -10,6 +10,8 @@ struct PlaylistSelectorFileAccessTests {
         let folder = try fixture.folder("Album")
         let first = try fixture.file("Album/Disc 1/01.mp3")
         let second = try fixture.file("Album/Disc 2/01.mp3")
+        _ = try fixture.file("Album/Disc 1/cover.jpg")
+        _ = try fixture.file("Album/Disc 2/folder.jpg")
         let library = Library()
         let backend = TestFileAccessBackend()
         let manager = FileAccessManager(library: library, backend: backend)
@@ -30,6 +32,10 @@ struct PlaylistSelectorFileAccessTests {
         ])
         #expect(imported.tracks.allSatisfy { $0.title == "Selected track" && $0.duration == 42 })
         #expect(imported.tracks.allSatisfy { $0.album?.title == "Album" })
+        #expect(imported.tracks.map { $0.album?.coverLocation } == [
+            .insideFolder(sourceID: source.id, relativePath: "Disc 1/cover.jpg"),
+            .insideFolder(sourceID: source.id, relativePath: "Disc 2/folder.jpg"),
+        ])
         #expect(backend.startedURLs == [folder])
         #expect(backend.stoppedURLs == [folder])
 
@@ -108,6 +114,39 @@ struct PlaylistSelectorFileAccessTests {
         #expect(library.sources.count == 1)
         #expect(try backend.resolveBookmark(source.bookmarkData).url == album)
         #expect(imported.tracks.first?.location == .insideFolder(sourceID: source.id, relativePath: "song.mp3"))
+        #expect(backend.startedURLs.count == backend.stoppedURLs.count)
+    }
+
+    @Test func sourcesUsedOnlyByArtworkAreCommittedAlongsideTrackSources() async throws {
+        let fixture = try FileAccessFixture()
+        defer { fixture.remove() }
+        let parent = try fixture.folder("Collection")
+        let album = try fixture.folder("Collection/Album")
+        _ = try fixture.file("Collection/Album/song.mp3")
+        let artwork = try fixture.file("Collection/Shared/cover.jpg")
+        try FileManager.default.createSymbolicLink(
+            at: album.appendingPathComponent("cover.jpg"),
+            withDestinationURL: artwork
+        )
+        let library = Library()
+        let backend = TestFileAccessBackend()
+        let manager = FileAccessManager(library: library, backend: backend)
+        let selector = PlaylistSelector(
+            library: library,
+            fileAccessManager: manager,
+            metadataReader: ScopedSelectionMetadataReader(backend: backend)
+        )
+
+        let imported = try #require(await selector.selectFiles([parent, album]))
+        let track = try #require(imported.tracks.first)
+        let trackSourceID = try #require(track.location?.sourceID)
+        let cover = try #require(track.album?.coverLocation)
+
+        #expect(library.sources.count == 2)
+        #expect(cover.sourceID != trackSourceID)
+        let source = try #require(library.source(id: cover.sourceID))
+        #expect(try backend.resolveBookmark(source.bookmarkData).url == parent)
+        #expect(cover == .insideFolder(sourceID: source.id, relativePath: "Shared/cover.jpg"))
         #expect(backend.startedURLs.count == backend.stoppedURLs.count)
     }
 

@@ -11,6 +11,7 @@ import SwiftUI
 struct DiscosaurApp: App {
     @State private var library: Library
     @State private var fileAccessManager: FileAccessManager
+    @State private var artworkCache: AlbumArtworkCache
     @State private var player: Player
 
     init() {
@@ -18,6 +19,7 @@ struct DiscosaurApp: App {
         let fileAccessManager = FileAccessManager(library: library)
         _library = State(initialValue: library)
         _fileAccessManager = State(initialValue: fileAccessManager)
+        _artworkCache = State(initialValue: AlbumArtworkCache(fileAccessManager: fileAccessManager))
         _player = State(initialValue: Player(
             engine: AVFilePlaybackEngine(),
             fileAccessManager: fileAccessManager
@@ -27,7 +29,12 @@ struct DiscosaurApp: App {
     var body: some Scene {
         WindowGroup {
             #if os(macOS)
-            MacRootView(library: library, fileAccessManager: fileAccessManager, player: player)
+            MacRootView(
+                library: library,
+                fileAccessManager: fileAccessManager,
+                artworkCache: artworkCache,
+                player: player
+            )
             #else
             ContentView()
             #endif

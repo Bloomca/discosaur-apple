@@ -3,6 +3,7 @@ import SwiftUI
 
 struct MacRootView: View {
     let library: Library
+    let artworkCache: AlbumArtworkCache
     let player: Player
     private let finderFileRevealer: FinderFileRevealer
     @State private var finderErrorMessage: String?
@@ -10,8 +11,14 @@ struct MacRootView: View {
     @State private var viewMode: PlaylistViewMode = .list
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
-    init(library: Library, fileAccessManager: FileAccessManager, player: Player) {
+    init(
+        library: Library,
+        fileAccessManager: FileAccessManager,
+        artworkCache: AlbumArtworkCache,
+        player: Player
+    ) {
         self.library = library
+        self.artworkCache = artworkCache
         self.player = player
         finderFileRevealer = FinderFileRevealer(fileAccessManager: fileAccessManager)
         _selector = State(initialValue: PlaylistSelector(library: library, fileAccessManager: fileAccessManager))
@@ -33,6 +40,11 @@ struct MacRootView: View {
         }
         .navigationSplitViewStyle(.balanced)
         .frame(minWidth: 700, minHeight: 320)
+        .task(id: library.selectedPlaylist) {
+            if let playlist = library.selectedPlaylist {
+                await artworkCache.load(for: playlist)
+            }
+        }
         .alert("Could not open in Finder", isPresented: Binding(
             get: { finderErrorMessage != nil },
             set: { isPresented in
@@ -57,11 +69,11 @@ struct MacRootView: View {
                     onOpenInFinder: openInFinder
                 )
             case .albums:
-                AlbumGallery(playlist: library.selectedPlaylist, player: player)
+                AlbumGallery(playlist: library.selectedPlaylist, artworkCache: artworkCache, player: player)
             }
 
             Divider()
-            PlayerView(player: player)
+            PlayerView(player: player, artworkCache: artworkCache)
         }
         .frame(minWidth: 480, minHeight: 320)
         .toolbar {
@@ -170,6 +182,7 @@ private enum PlaylistViewMode: Hashable {
     MacRootView(
         library: library,
         fileAccessManager: fileAccessManager,
+        artworkCache: AlbumArtworkCache(fileAccessManager: fileAccessManager),
         player: Player(engine: AVFilePlaybackEngine(), fileAccessManager: fileAccessManager)
     )
 }

@@ -527,7 +527,7 @@ struct PlayerPlaylistTests {
         Track(
             url: URL(fileURLWithPath: "/Music/Disc \(disc)/\(filename)"),
             metadata: TrackMetadata(album: title, albumArtist: "Artist", trackNumber: number, discNumber: disc),
-            album: Album(title: title, artist: "Artist", year: 2024, coverData: nil)
+            album: Album(title: title, artist: "Artist", year: 2024)
         )
     }
 }

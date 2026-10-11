@@ -3,6 +3,7 @@ import SwiftUI
 struct AlbumCard: View {
     let album: AlbumGroup
     let playlist: Playlist
+    let artworkCache: AlbumArtworkCache
     let player: Player
 
     @State private var isHovered = false
@@ -29,7 +30,7 @@ struct AlbumCard: View {
             ZStack {
                 Rectangle().fill(.quaternary)
 
-                if let data = album.coverData {
+                if let data = artworkCache.data(for: album.coverLocation) {
                     GeometryReader { geometry in
                         AlbumCoverView(data: data, size: geometry.size.width)
                             .equatable()

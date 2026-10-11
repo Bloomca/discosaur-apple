@@ -1,8 +1,42 @@
 import Foundation
 
-nonisolated enum FileLocation: Equatable, Sendable {
+nonisolated enum FileLocation: Codable, Hashable, Sendable {
     case selectedFile(sourceID: UUID)
     case insideFolder(sourceID: UUID, relativePath: String)
+
+    private enum CodingKeys: String, CodingKey {
+        case kind, sourceID, relativePath
+    }
+
+    private enum Kind: String, Codable {
+        case selectedFile, insideFolder
+    }
+
+    init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        let sourceID = try values.decode(UUID.self, forKey: .sourceID)
+        switch try values.decode(Kind.self, forKey: .kind) {
+        case .selectedFile:
+            self = .selectedFile(sourceID: sourceID)
+        case .insideFolder:
+            self = .insideFolder(
+                sourceID: sourceID,
+                relativePath: try values.decode(String.self, forKey: .relativePath)
+            )
+        }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(sourceID, forKey: .sourceID)
+        switch self {
+        case .selectedFile:
+            try values.encode(Kind.selectedFile, forKey: .kind)
+        case .insideFolder(_, let relativePath):
+            try values.encode(Kind.insideFolder, forKey: .kind)
+            try values.encode(relativePath, forKey: .relativePath)
+        }
+    }
 
     var sourceID: UUID {
         switch self {

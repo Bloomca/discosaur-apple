@@ -3,6 +3,7 @@ import SwiftUI
 
 struct PlayerView: View {
     let player: Player
+    let artworkCache: AlbumArtworkCache
 
     private var hasTrack: Bool { player.currentTrack != nil }
     private var isPlaying: Bool { player.status == .playing }
@@ -27,7 +28,7 @@ struct PlayerView: View {
 
     var body: some View {
         HStack(spacing: 16) {
-            if let coverData = player.currentTrack?.album?.coverData {
+            if let coverData = artworkCache.data(for: player.currentTrack?.album?.coverLocation) {
                 AlbumCoverView(data: coverData)
                     .equatable()
                     .accessibilityIdentifier("playerAlbumCover")
@@ -75,6 +76,10 @@ struct PlayerView: View {
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityIdentifier("playerView")
+        .task(id: player.currentTrack?.album?.coverLocation) {
+            // Playback can belong to a different playlist than the browsing selection.
+            await artworkCache.load(player.currentTrack?.album?.coverLocation)
+        }
         .alert("Could not play track", isPresented: Binding(
             get: { player.errorMessage != nil },
             set: { isPresented in

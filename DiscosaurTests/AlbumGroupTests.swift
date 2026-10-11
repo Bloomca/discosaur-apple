@@ -72,7 +72,7 @@ struct AlbumGroupTests {
         let first = albumTrack("/Music/Album/01.mp3", title: "Album", artist: "Artist", number: 1)
         let original = Playlist(tracks: [first])
         let originalGroup = try #require(original.albumGroups.first)
-        let cover = Data([1, 2, 3])
+        let cover = FileLocation.insideFolder(sourceID: UUID(), relativePath: "Album/cover.jpg")
         let second = albumTrack("/Music/Album/02.mp3", title: "Album", artist: "Artist", number: 2, cover: cover)
         let updated = Playlist(id: original.id, tracks: [first, second])
 
@@ -81,7 +81,7 @@ struct AlbumGroupTests {
         #expect(groups.count == 1)
         let group = try #require(groups.first)
         #expect(group.id == originalGroup.id)
-        #expect(group.coverData == cover)
+        #expect(group.coverLocation == cover)
         #expect(group.trackIndices == [0, 1])
     }
 
@@ -99,12 +99,12 @@ struct AlbumGroupTests {
         trackArtist: String? = nil,
         disc: Int = 1,
         number: Int? = nil,
-        cover: Data? = nil
+        cover: FileLocation? = nil
     ) -> Track {
         Track(
             url: URL(fileURLWithPath: path),
             metadata: TrackMetadata(artist: trackArtist, album: title, albumArtist: artist, trackNumber: number, discNumber: disc),
-            album: title.map { Album(title: $0, artist: artist, year: 2024, coverData: cover) }
+            album: title.map { Album(title: $0, artist: artist, year: 2024, coverLocation: cover) }
         )
     }
 }

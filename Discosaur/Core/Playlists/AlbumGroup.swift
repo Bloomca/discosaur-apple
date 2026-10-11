@@ -9,7 +9,7 @@ nonisolated struct AlbumGroup: Identifiable, Equatable, Sendable {
     let id: ID
     let title: String
     let artist: String
-    let coverData: Data?
+    let coverLocation: FileLocation?
     let trackIndices: [Int]
 
     private static func id(for track: Track) -> ID {
@@ -62,7 +62,7 @@ nonisolated struct AlbumGroup: Identifiable, Equatable, Sendable {
                 id: id,
                 title: first.album?.title ?? (folderTitle.isEmpty ? "Unknown album" : folderTitle),
                 artist: artist,
-                coverData: tracks.lazy.compactMap { $0.album?.coverData }.first,
+                coverLocation: tracks.lazy.compactMap { $0.album?.coverLocation }.first,
                 trackIndices: sortedIndices
             )
         }

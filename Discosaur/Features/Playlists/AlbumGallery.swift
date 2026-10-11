@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AlbumGallery: View {
     let playlist: Playlist?
+    let artworkCache: AlbumArtworkCache
     let player: Player
     private let columns = [GridItem(.adaptive(minimum: 160, maximum: 220), spacing: 20, alignment: .top)]
 
@@ -10,7 +11,7 @@ struct AlbumGallery: View {
             LazyVGrid(columns: columns, alignment: .leading, spacing: 20) {
                 if let playlist {
                     ForEach(playlist.albumGroups) { album in
-                        AlbumCard(album: album, playlist: playlist, player: player)
+                        AlbumCard(album: album, playlist: playlist, artworkCache: artworkCache, player: player)
                     }
                 }
             }

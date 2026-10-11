@@ -45,12 +45,11 @@ nonisolated enum FileLocation: Codable, Hashable, Sendable {
         }
     }
 
-    func resourceURL(relativeTo root: URL, kind: FileSource.Kind) throws -> URL {
-        guard root.isFileURL else { throw FileAccessError.localFileRequired }
+    // Structural validation needs no bookmark resolution or filesystem access.
+    func validate(kind: FileSource.Kind) throws {
         switch self {
         case .selectedFile:
             guard kind == .file else { throw FileAccessError.sourceKindMismatch }
-            return root
         case .insideFolder(_, let relativePath):
             guard kind == .folder else { throw FileAccessError.sourceKindMismatch }
             let components = relativePath.split(separator: "/", omittingEmptySubsequences: false)
@@ -58,6 +57,16 @@ nonisolated enum FileLocation: Codable, Hashable, Sendable {
                   components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else {
                 throw FileAccessError.invalidRelativePath(relativePath)
             }
+        }
+    }
+
+    func resourceURL(relativeTo root: URL, kind: FileSource.Kind) throws -> URL {
+        guard root.isFileURL else { throw FileAccessError.localFileRequired }
+        try validate(kind: kind)
+        switch self {
+        case .selectedFile:
+            return root
+        case .insideFolder(_, let relativePath):
             let url = root.appendingPathComponent(relativePath).standardizedFileURL
             guard Self.relativePath(of: url, inside: root) != nil else {
                 throw FileAccessError.outsideSource(url)

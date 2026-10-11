@@ -8,7 +8,7 @@ final class PlaylistRenamingUITests: XCTestCase {
 
     @MainActor
     func testReturnCommitsTheNameAndUpdatesTheWindowTitle() {
-        let app = XCUIApplication()
+        let app = makeTestApplication()
         app.launch()
         createPlaylist(in: app)
         let editor = beginRename("New playlist", in: app)
@@ -23,7 +23,7 @@ final class PlaylistRenamingUITests: XCTestCase {
 
     @MainActor
     func testEscapeCancelsWithoutChangingTheName() {
-        let app = XCUIApplication()
+        let app = makeTestApplication()
         app.launch()
         createPlaylist(in: app)
         let editor = beginRename("New playlist", in: app)
@@ -39,7 +39,7 @@ final class PlaylistRenamingUITests: XCTestCase {
 
     @MainActor
     func testCreatingAnotherPlaylistCommitsToThePreviouslyEditedPlaylist() {
-        let app = XCUIApplication()
+        let app = makeTestApplication()
         app.launch()
         createPlaylist(in: app)
         let editor = beginRename("New playlist", in: app)
@@ -55,7 +55,7 @@ final class PlaylistRenamingUITests: XCTestCase {
 
     @MainActor
     func testEmptyNameLeavesTheExistingNameUnchanged() {
-        let app = XCUIApplication()
+        let app = makeTestApplication()
         app.launch()
         createPlaylist(in: app)
         let editor = beginRename("New playlist", in: app)
@@ -70,7 +70,7 @@ final class PlaylistRenamingUITests: XCTestCase {
 
     @MainActor
     func testSelectingAnotherPlaylistCommitsToTheEditedItem() {
-        let app = XCUIApplication()
+        let app = makeTestApplication()
         app.launch()
         createPlaylist(in: app)
         let firstEditor = beginRename("New playlist", in: app)
@@ -87,6 +87,23 @@ final class PlaylistRenamingUITests: XCTestCase {
         XCTAssertTrue(sidebar(in: app).staticTexts["First playlist"].exists)
         XCTAssertEqual(app.windows.firstMatch.title, "First playlist")
         XCTAssertFalse(secondEditor.exists)
+    }
+
+    @MainActor
+    func testQuittingImmediatelyAfterRenameSavesAndRestoresThePlaylist() {
+        let app = makeTestApplication()
+        app.launch()
+        createPlaylist(in: app)
+        let editor = beginRename("New playlist", in: app)
+        replaceName(with: "Saved playlist", in: editor)
+        editor.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: [])
+        app.typeKey("q", modifierFlags: .command)
+        XCTAssertTrue(app.wait(for: .notRunning, timeout: 5))
+
+        app.launch()
+
+        XCTAssertTrue(sidebar(in: app).staticTexts["Saved playlist"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.windows.firstMatch.title, "Saved playlist")
     }
 
     @MainActor

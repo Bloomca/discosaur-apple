@@ -15,7 +15,7 @@ final class DiscosaurUITests: XCTestCase {
 
     @MainActor
     func testInitialScreen() throws {
-        let app = XCUIApplication()
+        let app = makeTestApplication()
         app.launch()
 
         #if os(macOS)
@@ -40,7 +40,7 @@ final class DiscosaurUITests: XCTestCase {
     #if os(macOS)
     @MainActor
     func testPlaylistViewButtonsSwitchViews() throws {
-        let app = XCUIApplication()
+        let app = makeTestApplication()
         app.launch()
         let albumsButton = app.buttons["playlistAlbumsView"]
         XCTAssertTrue(albumsButton.waitForExistence(timeout: 5))

@@ -8,6 +8,18 @@ final class Library {
     private(set) var sources: [FileSource] = []
     private(set) var selectedPlaylistID: UUID?
 
+    @ObservationIgnored var onChange: (() -> Void)?
+
+    var snapshot: LibrarySnapshot {
+        LibrarySnapshot(playlists: playlists, sources: sources)
+    }
+
+    func restore(_ snapshot: LibrarySnapshot) {
+        sources = snapshot.sources
+        playlists = snapshot.playlists
+        selectedPlaylistID = playlists.first?.id
+    }
+
     // Browsing selection is independent of Player.activePlaylist and its queue.
     var selectedPlaylist: Playlist? {
         guard let selectedPlaylistID else { return nil }
@@ -24,15 +36,18 @@ final class Library {
 
     func updateSource(_ source: FileSource) {
         if let index = sources.firstIndex(where: { $0.id == source.id }) {
+            guard sources[index] != source else { return }
             sources[index] = source
         } else {
             sources.append(source)
         }
+        onChange?()
     }
 
     // Insert or replace a playlist, selecting only the first one added.
     func updatePlaylist(_ playlist: Playlist) {
         if let index = playlists.firstIndex(where: { $0.id == playlist.id }) {
+            guard playlists[index] != playlist else { return }
             playlists[index] = playlist
         } else {
             playlists.append(playlist)
@@ -41,6 +56,7 @@ final class Library {
         if selectedPlaylistID == nil {
             selectedPlaylistID = playlist.id
         }
+        onChange?()
     }
 
     func selectPlaylist(id: UUID) {

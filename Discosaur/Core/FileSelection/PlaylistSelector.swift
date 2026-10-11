@@ -47,6 +47,7 @@ final class PlaylistSelector {
             }
             let selectedURLs = prepared.map { $0.access.resourceURL }
             let scannedTracks = try await scanner.tracks(from: selectedURLs)
+            if let playlistID, library.playlist(id: playlistID) == nil { return nil }
             let destination = playlistID.flatMap { library.playlist(id: $0) } ?? library.selectedPlaylist
             let existingURLs = Set(destination?.tracks.map(\.url) ?? [])
             let newTracks = try scannedTracks.filter { !existingURLs.contains($0.url) }.map {
@@ -63,6 +64,7 @@ final class PlaylistSelector {
             try Task.checkCancellation()
             // Re-read the destination after suspension to preserve other imports/edits.
             // First imports can share a playlist created while this import was suspended.
+            if let playlistID, library.playlist(id: playlistID) == nil { return nil }
             let currentDestination = playlistID.flatMap { library.playlist(id: $0) } ?? library.selectedPlaylist
             let existingTracks = currentDestination?.tracks ?? []
             let currentURLs = Set(existingTracks.map(\.url))

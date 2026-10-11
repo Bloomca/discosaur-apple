@@ -78,6 +78,20 @@ final class Library {
         updatePlaylist(Playlist(id: playlist.id, name: name, tracks: playlist.tracks))
     }
 
+    // Remove the playlist only, keeping media and source grants intact.
+    // this can be useful for the "All" playlist
+    @discardableResult
+    func removePlaylist(id: Playlist.ID) -> Playlist? {
+        guard let index = playlists.firstIndex(where: { $0.id == id }) else { return nil }
+        let removed = playlists.remove(at: index)
+        if selectedPlaylistID == id {
+            // Prefer the next sidebar item; use the previous one when deleting the last.
+            selectedPlaylistID = playlists.isEmpty ? nil : playlists[min(index, playlists.count - 1)].id
+        }
+        onChange?()
+        return removed
+    }
+
     // Remove a playlist entry, never its file or a source shared by other entries.
     @discardableResult
     func removeTrack(id: Track.ID, from playlistID: Playlist.ID) -> Playlist? {

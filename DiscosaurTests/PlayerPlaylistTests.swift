@@ -75,6 +75,58 @@ struct PlayerPlaylistTests {
         #expect(engine.stopCount == stopCount)
     }
 
+    @Test(arguments: [false, true])
+    func removingTheActivePlaylistStopsPlaybackAndClearsItsQueue(paused: Bool) async throws {
+        let engine = PlaylistTestEngine()
+        let player = Player(engine: engine)
+        defer { player.stop() }
+        let playlist = Playlist(tracks: [
+            Track(url: URL(fileURLWithPath: "/Music/first.mp3")),
+            Track(url: URL(fileURLWithPath: "/Music/next.mp3")),
+        ])
+        player.selectTrack(in: playlist, at: 0)
+        try await player.play()
+        try player.seek(to: 12)
+        if paused { player.pause() }
+        let stopCount = engine.stopCount
+
+        player.removePlaylist(id: playlist.id)
+
+        #expect(player.activePlaylist == nil)
+        #expect(player.currentTrack == nil)
+        #expect(player.currentIndex == nil)
+        #expect(player.status == .stopped)
+        #expect(player.position == 0)
+        #expect(!player.canGoNext)
+        #expect(!player.canGoPrevious)
+        #expect(!player.canSeek)
+        #expect(engine.stopCount == stopCount + 1)
+    }
+
+    @Test(arguments: [false, true])
+    func removingAnotherPlaylistDoesNotInterruptPlayback(paused: Bool) async throws {
+        let engine = PlaylistTestEngine()
+        let player = Player(engine: engine)
+        defer { player.stop() }
+        let track = Track(url: URL(fileURLWithPath: "/Music/shared.mp3"))
+        let playing = Playlist(tracks: [track])
+        let other = Playlist(tracks: [track])
+        player.selectTrack(in: playing, at: 0)
+        try await player.play()
+        try player.seek(to: 12)
+        if paused { player.pause() }
+        let stopCount = engine.stopCount
+
+        player.removePlaylist(id: other.id)
+
+        #expect(player.activePlaylist == playing)
+        #expect(player.currentTrack == track)
+        #expect(player.position == 12)
+        #expect(player.status == (paused ? .paused : .playing))
+        #expect(engine.stopCount == stopCount)
+        #expect(engine.loadedURLs == [track.url])
+    }
+
     @Test func albumPlaybackStartsAtFirstTrackAndFollowsDiscAndTrackOrder() async throws {
         let engine = PlaylistTestEngine()
         let player = Player(engine: engine)

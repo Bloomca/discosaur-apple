@@ -88,6 +88,36 @@ struct LibraryPersistenceTests {
         #expect(!persistence.hasUnsavedChanges)
     }
 
+    @Test func deletingPlaylistsIsSavedAndRestoredWithoutDeletingBookmarks() async throws {
+        let fixture = try FileAccessFixture()
+        defer { fixture.remove() }
+        let fileURL = fixture.directory.appendingPathComponent("library.json")
+        let storage = Storage(fileURL: fileURL)
+        let first = Playlist(name: "Deleted", tracks: [])
+        let second = Playlist(name: "Kept", tracks: [])
+        let source = FileSource(kind: .file, bookmarkData: Data([1]))
+        try await storage.save(LibrarySnapshot(playlists: [first, second], sources: [source]))
+        let library = Library()
+        let persistence = LibraryPersistence(library: library, storage: storage, autosaveDelay: .seconds(60))
+        await persistence.loadIfNeeded()
+
+        library.removePlaylist(id: first.id)
+        #expect(persistence.hasUnsavedChanges)
+        await persistence.flush()
+        #expect(try await storage.load() == LibrarySnapshot(playlists: [second], sources: [source]))
+        library.removePlaylist(id: UUID())
+        #expect(!persistence.hasUnsavedChanges)
+        library.removePlaylist(id: second.id)
+        await persistence.flush()
+        let relaunched = Library()
+        await LibraryPersistence(library: relaunched, storage: storage).loadIfNeeded()
+
+        #expect(relaunched.playlists.isEmpty)
+        #expect(relaunched.selectedPlaylist == nil)
+        #expect(relaunched.sources == [source])
+        #expect(!persistence.hasUnsavedChanges)
+    }
+
     @Test func unchangedUpdatesAndBrowsingDoNotScheduleWrites() async throws {
         let source = FileSource(kind: .file, bookmarkData: Data([1]))
         let first = Playlist(tracks: [])

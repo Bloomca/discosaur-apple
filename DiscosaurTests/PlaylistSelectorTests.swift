@@ -169,6 +169,32 @@ struct PlaylistSelectorTests {
         #expect(library.playlists.count == 2)
     }
 
+    @Test(arguments: [false, true])
+    func deletingTheImportDestinationDoesNotRecreateItOrRedirectTracks(hasAnotherPlaylist: Bool) async throws {
+        let fixture = try PlaylistSelectionFixture()
+        defer { fixture.remove() }
+        let added = try fixture.file("added.mp3")
+        let library = Library()
+        let original = library.createPlaylist()
+        let other = hasAnotherPlaylist ? library.createPlaylist() : nil
+        library.selectPlaylist(id: original.id)
+        let reader = SuspendedSelectionMetadataReader()
+        let selector = PlaylistSelector(library: library, metadataReader: reader)
+        let task = Task { await selector.selectFiles([added]) }
+        await reader.waitUntilReading()
+
+        library.removePlaylist(id: original.id)
+        await reader.resume()
+        let imported = await task.value
+
+        #expect(imported == nil)
+        #expect(library.playlists == other.map { [$0] } ?? [])
+        #expect(library.selectedPlaylist == other)
+        #expect(library.sources.isEmpty)
+        #expect(selector.errorMessage == nil)
+        #expect(!selector.isLoading)
+    }
+
     @Test func editsDuringImportArePreserved() async throws {
         let fixture = try PlaylistSelectionFixture()
         defer { fixture.remove() }

@@ -132,6 +132,12 @@ final class Player {
         refreshAlbumNavigation(in: playlist, at: index)
     }
 
+    // Deleting an unrelated browsing playlist must not interrupt the playing queue.
+    func removePlaylist(id: Playlist.ID) {
+        guard activePlaylist?.id == id else { return }
+        stop()
+    }
+
     private func refreshAlbumNavigation(in playlist: Playlist, at index: Int) {
         guard let playbackAlbumID else { return }
         let groups = playlist.albumGroups

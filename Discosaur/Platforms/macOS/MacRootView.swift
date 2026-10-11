@@ -27,7 +27,7 @@ struct MacRootView: View {
     var body: some View {
         // NavigationSplitView supplies the standard sidebar toggle in the toolbar.
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            PlaylistSidebar(library: library, onRename: renamePlaylist)
+            PlaylistSidebar(library: library, onRename: renamePlaylist, onDelete: deletePlaylist)
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
         } detail: {
             if let playlist = library.selectedPlaylist {
@@ -136,6 +136,11 @@ struct MacRootView: View {
             // Player publishes playback failures through its existing alert.
             try? await player.play()
         }
+    }
+
+    private func deletePlaylist(id: Playlist.ID) {
+        guard library.removePlaylist(id: id) != nil else { return }
+        player.removePlaylist(id: id)
     }
 
     private func deleteTrack(playlistID: Playlist.ID, trackID: Track.ID) {

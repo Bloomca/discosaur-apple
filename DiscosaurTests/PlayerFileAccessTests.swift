@@ -239,6 +239,61 @@ struct PlayerFileAccessTests {
         #expect(player.errorMessage == nil)
     }
 
+    @Test func deletingTheActivePlaylistClosesItsFileBeforeReleasingAccess() async throws {
+        let library = Library()
+        let backend = TestFileAccessBackend()
+        let url = URL(fileURLWithPath: "/Music/song.mp3")
+        let source = FileSource(kind: .file, bookmarkData: backend.registerBookmark(for: url))
+        library.updateSource(source)
+        let engine = FileAccessPlaybackEngine()
+        let player = Player(engine: engine, fileAccessManager: FileAccessManager(library: library, backend: backend))
+        defer { player.stop() }
+        let playlist = Playlist(tracks: [Track(url: url, location: .selectedFile(sourceID: source.id))])
+        library.updatePlaylist(playlist)
+        player.selectTrack(in: playlist, at: 0)
+        try await player.play()
+        engine.onFileClose = { #expect(backend.stoppedURLs.isEmpty) }
+
+        library.removePlaylist(id: playlist.id)
+        player.removePlaylist(id: playlist.id)
+
+        #expect(engine.loadedFileURL == nil)
+        #expect(backend.stoppedURLs == [url])
+        #expect(library.sources == [source])
+        #expect(player.activePlaylist == nil)
+        #expect(player.status == .stopped)
+    }
+
+    @Test func deletingAPlaylistDuringLoadingPreventsPlaybackAndReleasesAccessAfterTheRead() async throws {
+        let library = Library()
+        let backend = TestFileAccessBackend()
+        let url = URL(fileURLWithPath: "/Music/song.mp3")
+        let source = FileSource(kind: .file, bookmarkData: backend.registerBookmark(for: url))
+        library.updateSource(source)
+        let engine = FileAccessPlaybackEngine()
+        engine.suspendsLoading = true
+        let player = Player(engine: engine, fileAccessManager: FileAccessManager(library: library, backend: backend))
+        defer { player.stop() }
+        let playlist = Playlist(tracks: [Track(url: url, location: .selectedFile(sourceID: source.id))])
+        library.updatePlaylist(playlist)
+        player.selectTrack(in: playlist, at: 0)
+        let task = Task { try await player.play() }
+        await engine.waitUntilLoading()
+
+        library.removePlaylist(id: playlist.id)
+        player.removePlaylist(id: playlist.id)
+        #expect(backend.stoppedURLs.isEmpty)
+        engine.resumeLoading()
+        await #expect(throws: CancellationError.self) { try await task.value }
+
+        #expect(backend.stoppedURLs == [url])
+        #expect(engine.loadedFileURL == nil)
+        #expect(player.activePlaylist == nil)
+        #expect(player.currentTrack == nil)
+        #expect(!player.isLoading)
+        #expect(player.errorMessage == nil)
+    }
+
     @Test func deletionAdvanceClosesTheOldFileAndScopeBeforeOpeningTheNextSource() async throws {
         let library = Library()
         let backend = TestFileAccessBackend()

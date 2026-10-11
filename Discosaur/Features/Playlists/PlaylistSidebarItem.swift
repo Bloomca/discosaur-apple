@@ -5,6 +5,7 @@ struct PlaylistSidebarItem: View {
     let playlist: Playlist
     let selectedPlaylistID: Playlist.ID?
     let onRename: (Playlist.ID, String) -> Void
+    let onDelete: (Playlist.ID) -> Void
     @State private var newName: String? // nil means the item is not being edited.
     @FocusState private var isNameFocused: Bool
 
@@ -30,6 +31,12 @@ struct PlaylistSidebarItem: View {
                 }
             }
             .accessibilityIdentifier("renamePlaylistMenuItem")
+
+            Divider()
+            Button("Delete", systemImage: "trash", role: .destructive) {
+                onDelete(playlist.id)
+            }
+            .accessibilityIdentifier("deletePlaylistMenuItem")
         }
         .onChange(of: isNameFocused) { _, focused in
             if !focused { commitRename() }

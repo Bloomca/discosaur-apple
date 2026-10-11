@@ -17,6 +17,9 @@ struct DiscosaurApp: App {
     @State private var artworkCache: AlbumArtworkCache
     @State private var player: Player
     @State private var persistence: LibraryPersistence
+    #if os(iOS)
+    @State private var nowPlaying: NowPlayingCoordinator
+    #endif
     @Environment(\.scenePhase) private var scenePhase
     #if os(macOS)
     @NSApplicationDelegateAdaptor(AppLifecycle.self) private var lifecycle
@@ -39,8 +42,12 @@ struct DiscosaurApp: App {
         _persistence = State(initialValue: persistence)
         _library = State(initialValue: library)
         _fileAccessManager = State(initialValue: fileAccessManager)
-        _artworkCache = State(initialValue: AlbumArtworkCache(fileAccessManager: fileAccessManager))
+        let artworkCache = AlbumArtworkCache(fileAccessManager: fileAccessManager)
+        _artworkCache = State(initialValue: artworkCache)
         _player = State(initialValue: player)
+        #if os(iOS)
+        _nowPlaying = State(initialValue: NowPlayingCoordinator(player: player, artworkCache: artworkCache))
+        #endif
         #if os(macOS)
         lifecycle.persistence = persistence
         #endif
@@ -69,6 +76,10 @@ struct DiscosaurApp: App {
         .windowToolbarStyle(.unified(showsTitle: true))
         #endif
         .onChange(of: scenePhase) { _, phase in
+            #if os(iOS)
+            player.setProgressUpdatesEnabled(phase == .active)
+            nowPlaying.refresh()
+            #endif
             if phase == .background {
                 Task {
                     #if os(iOS)

@@ -29,9 +29,22 @@
 		5766D2FB307985CC001EE47F /* DiscosaurUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DiscosaurUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		E13AFC282AF347E481DD83A1 /* Exceptions for "Discosaur" folder in "Discosaur" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Platforms/iOS/Info.plist,
+			);
+			target = 5766D2E3307985CB001EE47F /* Discosaur */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		5766D2E6307985CB001EE47F /* Discosaur */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				E13AFC282AF347E481DD83A1 /* Exceptions for "Discosaur" folder in "Discosaur" target */,
+			);
 			path = Discosaur;
 			sourceTree = "<group>";
 		};
@@ -161,6 +174,11 @@
 				TargetAttributes = {
 					5766D2E3307985CB001EE47F = {
 						CreatedOnToolsVersion = 27.0;
+						SystemCapabilities = {
+							com.apple.BackgroundModes = {
+								enabled = 1;
+							};
+						};
 					};
 					5766D2F0307985CC001EE47F = {
 						CreatedOnToolsVersion = 27.0;
@@ -373,6 +391,8 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				"INFOPLIST_FILE[sdk=iphoneos*]" = Discosaur/Platforms/iOS/Info.plist;
+				"INFOPLIST_FILE[sdk=iphonesimulator*]" = Discosaur/Platforms/iOS/Info.plist;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -418,6 +438,8 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				"INFOPLIST_FILE[sdk=iphoneos*]" = Discosaur/Platforms/iOS/Info.plist;
+				"INFOPLIST_FILE[sdk=iphonesimulator*]" = Discosaur/Platforms/iOS/Info.plist;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;

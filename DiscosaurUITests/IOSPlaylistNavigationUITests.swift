@@ -127,7 +127,12 @@ final class IOSPlaylistNavigationUITests: XCTestCase {
         field.tap()
         let existing = field.value as? String ?? ""
         field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: existing.count) + name)
-        app.buttons["Save"].firstMatch.tap()
+        XCTAssertEqual(field.value as? String, name)
+        // Commit keyboard editing; Return may also invoke the alert's default Save action.
+        field.typeText("\n")
+        if app.alerts["Rename playlist"].exists {
+            app.alerts["Rename playlist"].buttons["Save"].tap()
+        }
         XCTAssertTrue(app.navigationBars[name].waitForExistence(timeout: 5))
     }
 

@@ -38,11 +38,14 @@ final class Player {
     private(set) var status: Status = .stopped
     private(set) var isLoading = false
     private(set) var position: TimeInterval = 0
+    private(set) var timelineRevision: UInt64 = 0
     var errorMessage: String?
     private var fileInfo: AudioFileInfo?
     private var volumeValue: Float = 1
 
     var duration: TimeInterval? { fileInfo?.duration ?? currentTrack?.duration }
+
+    var currentPlaybackPosition: TimeInterval { engine.position }
 
     var canSeek: Bool {
         guard status != .stopped, !isLoading,
@@ -73,6 +76,8 @@ final class Player {
     @ObservationIgnored private var fileAccess: ScopedFileAccess?
     @ObservationIgnored private var requestID = UUID()
     @ObservationIgnored private var progressTask: Task<Void, Never>?
+    @ObservationIgnored private var progressUpdatesEnabled = true
+    @ObservationIgnored private var interruptionResumeID: UUID?
 
     init(engine: any FilePlaybackEngine, fileAccessManager: FileAccessManager? = nil) {
         self.engine = engine
@@ -80,6 +85,9 @@ final class Player {
         engine.volume = volumeValue
         engine.onPlaybackEnded = { [weak self] in
             self?.handlePlaybackEnded()
+        }
+        engine.onPlaybackEvent = { [weak self] event in
+            self?.handlePlaybackEvent(event)
         }
     }
 
@@ -102,7 +110,7 @@ final class Player {
         selectCurrentTrack(in: playlist, at: firstIndex)
     }
 
-    private func selectCurrentTrack(in playlist: Playlist, at index: Int) {
+    private func selectCurrentTrack(in playlist: Playlist, at index: Int, keepingAudioSessionActive: Bool = false) {
         guard playlist.tracks.indices.contains(index) else { return }
         if activePlaylist?.id == playlist.id, currentTrack?.id == playlist.tracks[index].id {
             activePlaylist = playlist
@@ -110,7 +118,7 @@ final class Player {
             return
         }
 
-        resetPlayback()
+        resetPlayback(keepingAudioSessionActive: keepingAudioSessionActive)
         activePlaylist = playlist
         currentIndex = index
     }
@@ -167,7 +175,7 @@ final class Player {
         }
 
         // Close the deleted file and release its lease before loading the successor.
-        selectCurrentTrack(in: playlist, at: nextIndex)
+        selectCurrentTrack(in: playlist, at: nextIndex, keepingAudioSessionActive: true)
         refreshAlbumNavigation(in: playlist, at: nextIndex)
         let id = requestID
         Task { @MainActor [weak self] in
@@ -181,18 +189,19 @@ final class Player {
     func next() async throws {
         try Task.checkCancellation()
         guard let activePlaylist, let index = adjacentTrackIndex(offset: 1) else { return }
-        selectCurrentTrack(in: activePlaylist, at: index)
+        selectCurrentTrack(in: activePlaylist, at: index, keepingAudioSessionActive: true)
         try await play()
     }
 
     func previous() async throws {
         try Task.checkCancellation()
         guard let activePlaylist, let index = adjacentTrackIndex(offset: -1) else { return }
-        selectCurrentTrack(in: activePlaylist, at: index)
+        selectCurrentTrack(in: activePlaylist, at: index, keepingAudioSessionActive: true)
         try await play()
     }
 
     func play() async throws {
+        interruptionResumeID = nil
         guard let track = currentTrack, !isLoading, status != .playing else { return }
         try Task.checkCancellation()
         errorMessage = nil
@@ -211,21 +220,32 @@ final class Player {
             throw error
         }
         position = engine.position
+        timelineRevision &+= 1
         status = .playing
         startProgressUpdates()
     }
 
     func pause() {
+        // An explicit Pause also cancels pending automatic interruption recovery.
+        interruptionResumeID = nil
         if isLoading {
             // Prevent an in-flight load from starting playback after a pause.
             resetPlayback()
             return
         }
-        guard status == .playing else { return }
+        guard status == .playing else {
+            if status == .stopped {
+                // Cancel a queued automatic advance and release a session held
+                // between files, without forgetting the selected queue.
+                resetPlayback()
+            }
+            return
+        }
 
         engine.pause()
         stopProgressUpdates()
         position = engine.position
+        timelineRevision &+= 1
         status = .paused
     }
 
@@ -243,6 +263,7 @@ final class Player {
         do {
             try engine.seek(to: position)
             self.position = engine.position
+            timelineRevision &+= 1
         } catch {
             pause()
             errorMessage = error.localizedDescription
@@ -250,10 +271,56 @@ final class Player {
         }
     }
 
+    // Background playback needs no UI timer: iOS extrapolates Now Playing time.
+    func setProgressUpdatesEnabled(_ enabled: Bool) {
+        guard progressUpdatesEnabled != enabled else { return }
+        progressUpdatesEnabled = enabled
+        position = engine.position
+        timelineRevision &+= 1
+        if enabled, status == .playing {
+            startProgressUpdates()
+        } else {
+            stopProgressUpdates()
+        }
+    }
+
+    private func handlePlaybackEvent(_ event: PlaybackEngineEvent) {
+        switch event {
+        case .interruptionBegan:
+            let shouldResume = status == .playing || isLoading || interruptionResumeID != nil
+            pause()
+            if shouldResume, currentTrack != nil { interruptionResumeID = requestID }
+        case .interruptionEnded(let shouldResume):
+            guard shouldResume, let id = interruptionResumeID else {
+                interruptionResumeID = nil
+                return
+            }
+            Task { @MainActor [weak self] in
+                guard let self, self.interruptionResumeID == id, self.requestID == id,
+                      self.currentTrack != nil, self.status != .playing, !self.isLoading else { return }
+                // play() clears the token. Manual Pause/Stop/selection can invalidate
+                // it even after the end notification but before this task runs.
+                try? await self.play()
+            }
+        case .outputUnavailable:
+            pause()
+        case .configurationChanged:
+            position = engine.position
+            timelineRevision &+= 1
+        case .mediaServicesReset:
+            // Keep the selected queue, but reload audio only on explicit Play.
+            resetPlayback()
+        case .failed(let message):
+            pause()
+            errorMessage = message
+        }
+    }
+
     private func handlePlaybackEnded() {
         guard status == .playing else { return }
         stopProgressUpdates()
         position = duration ?? 0
+        timelineRevision &+= 1
         status = .stopped
 
         guard canGoNext else {
@@ -319,15 +386,21 @@ final class Player {
         }
     }
 
-    private func resetPlayback() {
+    private func resetPlayback(keepingAudioSessionActive: Bool = false) {
         requestID = UUID()
+        interruptionResumeID = nil
         stopProgressUpdates()
-        engine.stop()
+        if keepingAudioSessionActive {
+            engine.stopForTrackChange()
+        } else {
+            engine.stop()
+        }
         fileAccess?.close()
         fileAccess = nil
         loadedURL = nil
         fileInfo = nil
         position = 0
+        timelineRevision &+= 1
         isLoading = false
         status = .stopped
         errorMessage = nil
@@ -335,6 +408,7 @@ final class Player {
 
     private func startProgressUpdates() {
         stopProgressUpdates()
+        guard progressUpdatesEnabled else { return }
         progressTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }

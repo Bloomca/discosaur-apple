@@ -3,9 +3,9 @@ import Foundation
 
 @MainActor
 final class AVFilePlaybackEngine: FilePlaybackEngine {
-    private let audioEngine = AVAudioEngine()
-    private let playerNode = AVAudioPlayerNode()
-    private let equalizer = AVAudioUnitEQ(numberOfBands: 10)
+    private var audioEngine: AVAudioEngine
+    private var playerNode = AVAudioPlayerNode()
+    private var equalizer = AVAudioUnitEQ(numberOfBands: 10)
 
     private var file: AVAudioFile?
     private var fileInfo: AudioFileInfo?
@@ -17,25 +17,34 @@ final class AVFilePlaybackEngine: FilePlaybackEngine {
     private var hasScheduledAudio = false
     private var scheduleID = UUID()
     private var loadID = UUID()
+    private var playbackStartedAt: TimeInterval?
 
     #if os(iOS)
     private var isAudioSessionActive = false
+    private let notificationCenter: NotificationCenter
+    private var notificationObservers: [NSObjectProtocol] = []
     #endif
 
     var onPlaybackEnded: (@MainActor () -> Void)?
+    var onPlaybackEvent: (@MainActor (PlaybackEngineEvent) -> Void)?
 
     var position: TimeInterval {
         guard let fileInfo else { return 0 }
-        guard isPlaying,
-              let renderTime = playerNode.lastRenderTime,
+        guard isPlaying else { return positionSnapshot }
+        guard let renderTime = playerNode.lastRenderTime,
               let playerTime = playerNode.playerTime(forNodeTime: renderTime),
               playerTime.isSampleTimeValid,
               playerTime.sampleRate > 0 else {
-            return positionSnapshot
+            // A route change can invalidate render time before its notification
+            // arrives. Preserve approximate position instead of restarting at zero.
+            let elapsed = playbackStartedAt.map { max(0, ProcessInfo.processInfo.systemUptime - $0) } ?? 0
+            return min(fileInfo.duration, positionSnapshot + elapsed)
         }
 
         let offset = Double(startFrame) / sampleRate
-        let elapsed = Double(playerTime.sampleTime) / playerTime.sampleRate
+        // Render timing can briefly be negative during preroll after
+        // rescheduling; never report time before the requested position.
+        let elapsed = max(0, Double(playerTime.sampleTime) / playerTime.sampleRate)
         return min(fileInfo.duration, max(0, offset + elapsed))
     }
 
@@ -47,10 +56,38 @@ final class AVFilePlaybackEngine: FilePlaybackEngine {
         }
     }
 
+    #if os(iOS)
+    init(notificationCenter: NotificationCenter = .default, audioEngine: AVAudioEngine? = nil) {
+        self.notificationCenter = notificationCenter
+        self.audioEngine = audioEngine ?? AVAudioEngine()
+        attachNodes()
+        observeAudioNotifications()
+    }
+    #else
     init() {
+        audioEngine = AVAudioEngine()
+        attachNodes()
+    }
+    #endif
+
+    isolated deinit {
+        #if os(iOS)
+        removeAudioObservers()
+        #endif
+        stop()
+    }
+
+    private func attachNodes() {
         equalizer.bypass = true
         audioEngine.attach(playerNode)
         audioEngine.attach(equalizer)
+    }
+
+    private func connectNodes(format: AVAudioFormat) throws {
+        audioEngine.disconnectNodeOutput(playerNode)
+        audioEngine.disconnectNodeOutput(equalizer)
+        try audioEngine.connectNode(playerNode, to: equalizer, format: format)
+        try audioEngine.connectNode(equalizer, to: audioEngine.mainMixerNode, format: format)
     }
 
     func loadFile(at url: URL) async throws -> AudioFileInfo {
@@ -65,12 +102,9 @@ final class AVFilePlaybackEngine: FilePlaybackEngine {
             throw CancellationError()
         }
 
-        stop()
-        audioEngine.disconnectNodeOutput(playerNode)
-        audioEngine.disconnectNodeOutput(equalizer)
+        resetLoadedAudio(deactivatingSession: false)
         do {
-            try audioEngine.connectNode(playerNode, to: equalizer, format: prepared.file.processingFormat)
-            try audioEngine.connectNode(equalizer, to: audioEngine.mainMixerNode, format: prepared.file.processingFormat)
+            try connectNodes(format: prepared.file.processingFormat)
         } catch {
             prepared.file.close()
             throw error
@@ -88,15 +122,17 @@ final class AVFilePlaybackEngine: FilePlaybackEngine {
         guard !isPlaying else { return }
 
         if !hasScheduledAudio {
-            let frame = positionSnapshot >= fileInfo.duration ? 0 : startFrame
+            let frame = positionSnapshot >= fileInfo.duration ? 0 : AVAudioFramePosition(positionSnapshot * sampleRate)
             scheduleAudio(from: frame)
         }
 
         #if os(iOS)
-        let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playback, mode: .default)
-        try session.setActive(true)
-        isAudioSessionActive = true
+        if !isAudioSessionActive {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .default, policy: .longFormAudio, options: [])
+            try session.setActive(true)
+            isAudioSessionActive = true
+        }
         #endif
 
         do {
@@ -110,6 +146,7 @@ final class AVFilePlaybackEngine: FilePlaybackEngine {
             throw error
         }
 
+        playbackStartedAt = ProcessInfo.processInfo.systemUptime
         isPlaying = true
     }
 
@@ -117,13 +154,20 @@ final class AVFilePlaybackEngine: FilePlaybackEngine {
         guard isPlaying else { return }
 
         positionSnapshot = position
-        playerNode.pause()
+        scheduleID = UUID()
+        playerNode.stop()
         audioEngine.pause()
         isPlaying = false
+        hasScheduledAudio = false
+        playbackStartedAt = nil
         deactivateAudioSession()
     }
 
-    func stop() {
+    func stop() { resetLoadedAudio(deactivatingSession: true) }
+
+    func stopForTrackChange() { resetLoadedAudio(deactivatingSession: false) }
+
+    private func resetLoadedAudio(deactivatingSession: Bool) {
         loadID = UUID()
         scheduleID = UUID()
         playerNode.stop()
@@ -137,7 +181,8 @@ final class AVFilePlaybackEngine: FilePlaybackEngine {
         positionSnapshot = 0
         isPlaying = false
         hasScheduledAudio = false
-        deactivateAudioSession()
+        playbackStartedAt = nil
+        if deactivatingSession { deactivateAudioSession() }
     }
 
     func seek(to position: TimeInterval) throws {
@@ -164,6 +209,7 @@ final class AVFilePlaybackEngine: FilePlaybackEngine {
         let id = UUID()
         scheduleID = id
         playerNode.stop()
+        playbackStartedAt = nil
         isPlaying = false
         hasScheduledAudio = false
         startFrame = frame
@@ -214,7 +260,9 @@ final class AVFilePlaybackEngine: FilePlaybackEngine {
         hasScheduledAudio = false
         playerNode.stop()
         audioEngine.pause()
-        deactivateAudioSession()
+        playbackStartedAt = nil
+        // Player decides whether to advance or stop; do not release the session
+        // during the asynchronous handoff to the next file.
         onPlaybackEnded?()
     }
 
@@ -225,6 +273,114 @@ final class AVFilePlaybackEngine: FilePlaybackEngine {
         isAudioSessionActive = false
         #endif
     }
+
+    #if os(iOS)
+    private func observeAudioNotifications() {
+        let session = AVAudioSession.sharedInstance()
+        notificationObservers.append(notificationCenter.addObserver(
+            forName: AVAudioSession.didBecomeInactiveNotification, object: session, queue: nil
+        ) { [weak self] notification in
+            guard let context = notification.userInfo?[AVAudioSession.deactivationContextKey] as? AVAudioSession.DeactivationContext,
+                  context.source == .system else { return }
+            let wasInterrupted = context.interruptionContext != nil
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                // Ignore app-requested deactivation from our own Pause/Stop.
+                self.isAudioSessionActive = false
+                self.onPlaybackEvent?(wasInterrupted ? .interruptionBegan : .outputUnavailable)
+            }
+        })
+        notificationObservers.append(notificationCenter.addObserver(
+            forName: AVAudioSession.resumptionRecommendationNotification, object: session, queue: nil
+        ) { [weak self] notification in
+            guard let context = notification.userInfo?[AVAudioSession.resumptionContextKey] as? AVAudioSession.ResumptionContext else { return }
+            let shouldResume = context.recommendation == .shouldResume
+            Task { @MainActor [weak self] in
+                self?.onPlaybackEvent?(.interruptionEnded(shouldResume: shouldResume))
+            }
+        })
+        notificationObservers.append(notificationCenter.addObserver(
+            forName: AVAudioSession.routeChangeNotification, object: session, queue: nil
+        ) { [weak self] notification in
+            guard let reason = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+                  reason == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue else { return }
+            Task { @MainActor [weak self] in
+                // Never unexpectedly switch headphone playback to the speaker.
+                self?.onPlaybackEvent?(.outputUnavailable)
+            }
+        })
+        let engineID = ObjectIdentifier(audioEngine)
+        notificationObservers.append(notificationCenter.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: audioEngine, queue: nil
+        ) { [weak self] _ in
+            // Engine notifications originate on an internal queue. Never tear
+            // down or restart audio synchronously inside that callback.
+            Task { @MainActor [weak self] in
+                guard let self, ObjectIdentifier(self.audioEngine) == engineID else { return }
+                self.recoverConfiguration()
+            }
+        })
+        notificationObservers.append(notificationCenter.addObserver(
+            forName: AVAudioSession.mediaServicesWereLostNotification, object: session, queue: nil
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.isAudioSessionActive = false
+                self?.onPlaybackEvent?(.outputUnavailable)
+            }
+        })
+        notificationObservers.append(notificationCenter.addObserver(
+            forName: AVAudioSession.mediaServicesWereResetNotification, object: session, queue: nil
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.resetMediaServices() }
+        })
+    }
+
+    private func removeAudioObservers() {
+        for observer in notificationObservers { notificationCenter.removeObserver(observer) }
+        notificationObservers.removeAll()
+    }
+
+    private func recoverConfiguration() {
+        guard let file, let fileInfo, !audioEngine.isRunning else { return }
+        let target = position
+        let wasPlaying = isPlaying
+        scheduleID = UUID()
+        playerNode.stop()
+        audioEngine.stop()
+        isPlaying = false
+        hasScheduledAudio = false
+        playbackStartedAt = nil
+        positionSnapshot = target
+        do {
+            try connectNodes(format: file.processingFormat)
+            if wasPlaying {
+                if target >= fileInfo.duration {
+                    finishPlayback(for: scheduleID)
+                } else {
+                    try play()
+                }
+            }
+            onPlaybackEvent?(.configurationChanged)
+        } catch {
+            deactivateAudioSession()
+            onPlaybackEvent?(.failed(error.localizedDescription))
+        }
+    }
+
+    private func resetMediaServices() {
+        let chosenVolume = volume
+        isAudioSessionActive = false
+        removeAudioObservers()
+        resetLoadedAudio(deactivatingSession: false)
+        audioEngine = AVAudioEngine()
+        playerNode = AVAudioPlayerNode()
+        equalizer = AVAudioUnitEQ(numberOfBands: 10)
+        attachNodes()
+        volume = chosenVolume
+        observeAudioNotifications()
+        onPlaybackEvent?(.mediaServicesReset)
+    }
+    #endif
 
     // The file reader is prepared off the main actor, then transferred exclusively
     // to this engine. No file reader is shared between the two execution contexts.

@@ -18,7 +18,8 @@ enum IOSPlaybackTestFixture {
             let directory = libraryURL.deletingLastPathComponent().appendingPathComponent("Audio", isDirectory: true)
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
-            let duration: TimeInterval = 60
+            let duration = environment["DISCOSAUR_TEST_TRACK_DURATION"].flatMap(Double.init)
+                .flatMap { $0.isFinite && (10...600).contains($0) ? $0 : nil } ?? 60
             let sampleRate: Double = 44_100
             let frames = AVAudioFrameCount(duration * sampleRate)
             guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),

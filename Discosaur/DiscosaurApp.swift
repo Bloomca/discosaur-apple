@@ -49,7 +49,12 @@ struct DiscosaurApp: App {
     var body: some Scene {
         WindowGroup {
             rootView
-                .task { await persistence.loadIfNeeded() }
+                .task {
+                    #if DEBUG && os(iOS)
+                    await IOSPlaybackTestFixture.prepareIfRequested()
+                    #endif
+                    await persistence.loadIfNeeded()
+                }
                 .alert("Could not save library", isPresented: Binding(
                     get: { persistence.status == .ready && persistence.errorMessage != nil },
                     set: { if !$0 { persistence.errorMessage = nil } }
